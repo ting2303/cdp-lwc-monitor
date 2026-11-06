@@ -26,6 +26,7 @@ ADVICE = {
     "stale_stopped": ["確認是否有人刻意停止(例如換日整理資料)", "如果不是,用 AnyDesk 重新按 Record"],
     "stale_not_running": ["用 AnyDesk 連上,開啟 PADS 4", "載入設定檔後按 Sample 和 Record", "PADS 若一直關閉,查看 Windows 事件或電腦是否重開過"],
     "stale_d11": ["用 AnyDesk 看 11-D 軟體是否還在記錄", "檢查 11-D 電源和傳輸線", "確認存檔資料夾沒有變更"],
+    "setup": ["打開面板,按「設定資料夾」", "勾選自動找到的資料夾後按「套用」;找不到時直接輸入路徑"],
     "missing": ["確認儀器軟體已開始記錄", "按面板的「設定資料夾」確認路徑"],
     "log_errors": ["持續出現時,檢查儀器電源和傳輸線", "把紀錄檔裡的錯誤訊息記下來,問 DMT 時會用到"],
     "fog": ["有人在現場時,檢查並依手冊清潔 CDP 鏡窗", "看現場濕度和氣溫,判斷是起霧或結冰", "檢查雷射溫度;確認前的 CDP 資料先標記為可疑"],
@@ -166,6 +167,7 @@ class Watcher:
         self.feed = feed
         self.config = config
         self.normal = normal
+        self.console_shown: dict = {}
         self.power, self.boot, self.processes, self.clock = power, boot, processes, clock
         self.state_path = Path(config.get("state_file", "watch_state.json"))
         self.fog_seconds = float(config.get("fog_seconds", 300))
@@ -209,6 +211,22 @@ class Watcher:
         match = re.match(r"^(\d{14})", newest.parent.name)
         return newest.parent / f"Log{match.group(1)}.txt" if match else None
 
+    def console_changes(self, alerts: List[dict]) -> List[str]:
+        """黑色視窗只印有變化的項目;完整狀態看面板和狀態檔。"""
+        current = {a["key"]: a["title"] for a in alerts}
+        previous = self.console_shown
+        lines = []
+        added = [title for key, title in current.items() if key not in previous]
+        cleared = [title for key, title in previous.items() if key not in current]
+        if added:
+            lines.append("需要注意:" + "、".join(added))
+        if cleared:
+            lines.append("已解除:" + "、".join(cleared))
+        if cleared and not current:
+            lines.append("目前沒有需要注意的項目")
+        self.console_shown = current
+        return lines
+
     def evaluate(self) -> List[dict]:
         now = self.clock()
         alerts: List[dict] = []
@@ -241,6 +259,10 @@ class Watcher:
             percent = power.get("percent")
             level = "error" if percent is not None and percent <= 30 else "warn"
             add("on_battery", level, "電腦改用電池", f"目前沒有接電(電量 {percent}%)。可能斷電或電源線鬆脫。", "檢查現場電源;儀器可能也同時斷電。")
+
+        unset = [name for name, roots in (("PADS", self.config.get("pads_roots")), ("11-D", self.config.get("d11_roots"))) if not roots]
+        if unset:
+            add("setup", "info", f"還沒設定 {'、'.join(unset)} 資料夾", "設定之前不會讀取這些資料,也不會上傳。", "在面板按「設定資料夾」。")
 
         pads_running = None if running is None else PADS_PROCESS in running
         for instrument in status["instruments"]:

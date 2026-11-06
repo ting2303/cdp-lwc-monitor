@@ -107,9 +107,8 @@ def run_watch(feed: Feed, watcher: Watcher, config: dict, base: Path, stop: thre
             if config.get("backup_jobs") and time.monotonic() >= next_backup:
                 next_backup = time.monotonic() + float(config.get("backup_minutes", 30)) * 60
                 watcher.backup_result = run_backups(config, base)
-            alerts = watcher.step()
-            if alerts:
-                print(time.strftime("%H:%M:%S"), "需要注意:" + "、".join(a["title"] for a in alerts), flush=True)
+            for line in watcher.console_changes(watcher.step()):
+                print(time.strftime("%H:%M:%S"), line, flush=True)
         except Exception as error:  # 監測不能因單次錯誤停止
             print("監測發生錯誤:", error, flush=True)
         stop.wait(float(config.get("watch_seconds", 60)))
@@ -139,9 +138,6 @@ def main() -> int:
     missing = [p for p in config["pads_roots"] + config["d11_roots"] if not Path(p).is_dir()]
     for path in missing:
         print(f"注意:找不到資料夾 {path},請檢查 {config_path}", flush=True)
-    if not config["d11_roots"]:
-        print("注意:還沒設定 11-D 資料夾,請在面板按「設定資料夾」", flush=True)
-
     feed = Feed(config)
     feed.start()
     config.setdefault("state_file", str(config_path.with_name("watch_state.json")))

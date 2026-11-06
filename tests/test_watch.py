@@ -313,6 +313,36 @@ class Clocks(Base):
         self.assertEqual(feed.clock_check()["internal"], 187)
 
 
+class FirstRun(Base):
+    def test_unset_folders_give_one_setup_notice(self):
+        watcher = self.watcher(pads_roots=[], d11_roots=[])
+        status = {i["label"]: i for i in watcher.feed.status()["instruments"]}
+        self.assertEqual(status["CDP"]["code"], "unset")
+        found = {a["key"]: a for a in watcher.step()}
+        self.assertFalse({k for k in found if k.startswith("missing")})
+        self.assertIn("PADS、11-D", found["setup"]["title"])
+        self.assertTrue(found["setup"]["steps"])
+
+    def test_only_unset_instrument_is_named(self):
+        watcher = self.watcher(d11_roots=[])
+        found = {a["key"]: a for a in watcher.step()}
+        self.assertNotIn("PADS", found["setup"]["title"])
+        self.assertIn("missing:CDP", found)
+        self.assertNotIn("missing:11-D", found)
+
+    def test_configured_folders_have_no_setup_notice(self):
+        self.assertNotIn("setup", keys(self.watcher().step()))
+
+    def test_console_prints_only_changes(self):
+        watcher = self.watcher()
+        first = [{"key": "a", "title": "甲"}, {"key": "b", "title": "乙"}]
+        self.assertEqual(watcher.console_changes(first), ["需要注意:甲、乙"])
+        self.assertEqual(watcher.console_changes(first), [])
+        self.assertEqual(watcher.console_changes(first[:1]), ["已解除:乙"])
+        self.assertEqual(watcher.console_changes([]), ["已解除:甲", "目前沒有需要注意的項目"])
+        self.assertEqual(watcher.console_changes([]), [])
+
+
 class RemoteSetup(Base):
     def locator(self):
         from cpd_lwc_qc.locate import Locator

@@ -1273,7 +1273,8 @@ async function init() {
   if (state.index.locate) {
     initSetup();
     const current = await (await fetch("/api/locate")).json();
-    if (!current.pads_roots.length && !current.d11_roots.length) setTimeout(openSetup, 300);
+    // 第一次使用:打開設定並直接開始找,只看檔名和修改時間
+    if (!current.pads_roots.length && !current.d11_roots.length) setTimeout(async () => { await openSetup(); if (!current.search) $("searchBtn").click(); }, 300);
   }
   if (state.index.live) setMode(true);
   else {

@@ -512,6 +512,10 @@ class Feed:
                 state("11-D", d11_last, len(self.d11_files), [str(i.tail.error) for i in self.d11_files.values() if i.tail.error], sum(i.bad_lines for i in self.d11_files.values())),
             ]
             notices = self._notices(now)
+            for item in instruments:
+                roots = self.d11_roots if item["label"] == "11-D" else self.pads_roots
+                if item["code"] == "missing" and not roots:
+                    item["code"], item["text"] = "unset", "未設定資料夾"
         return {"instruments": instruments, "notices": notices, "ready": self.ready, "now": now, "stale_seconds": self.stale}
 
     def clock_check(self, active_seconds: float = 180) -> dict:
