@@ -1,0 +1,30 @@
+# 含 Discord Webhook,等同密碼
+panel_config.json
+watch_state.json
+backup_config.json
+*.webhook
+
+# 觀測資料和由它產生的檔案
+*.zip
+*.dat
+*.raw
+*.sps
+Log*.txt
+Shared*.csv
+cache/
+output/
+狀態/
+現場狀態.txt
+問題紀錄.csv
+
+# 打包結果放在 GitHub Releases
+dist/
+dist_v*/
+build/
+*.spec
+
+__pycache__/
+*.pyc
+.venv/
+venv*/
+.claude/

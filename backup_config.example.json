@@ -1,0 +1,17 @@
+{
+  "stable_minutes": 15,
+  "jobs": [
+    {
+      "name": "PADS",
+      "source": "C:/DMT/PADS Data",
+      "dest": "G:/我的雲端硬碟/Instruments_backup/PADS Data",
+      "exclude": []
+    },
+    {
+      "name": "11-D",
+      "source": "C:/請改成 11-D 匯出資料夾",
+      "dest": "G:/我的雲端硬碟/Instruments_backup/11D",
+      "exclude": []
+    }
+  ]
+}

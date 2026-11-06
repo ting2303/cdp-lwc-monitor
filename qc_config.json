@@ -1,0 +1,7 @@
+{
+  "_說明": "可依需要修改;未列出的門檻使用程式預設值。site_pressure 與 expected_pas 的 match 是比對資料路徑的正規表示式。",
+  "site_pressure": [
+    {"match": "Lulin", "pressure_mb": 723, "tolerance_mb": 15, "note": "鹿林:2025 年 11D 量到約 723 hPa"}
+  ],
+  "expected_pas": []
+}

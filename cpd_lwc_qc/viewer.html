@@ -1,0 +1,1289 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CDP LWC 11-D 資料瀏覽</title>
+<style>
+:root{color-scheme:light;--bg:#f6f6f3;--card:#fcfcfb;--text:#0b0b0b;--muted:#52514e;--line:#e4e3de;--axis:#b9b8b1;
+--s1:#2a78d6;--s2:#eb6834;--band1:#2a78d62e;--band2:#eb683429;--cursor:#0b0b0b;--ramp0:#e8f1fb;--ramp1:#0b3f80;--empty:#f0efea;--good:#0b6b3a;--warn:#8a5a00;--bad:#b3261e;
+--lv1:#dceafb;--lv2:#b1d0f5;--lv3:#73a9ea;--lv4:#2f77d2;--lv5:#154f9c;--lt1:#0b0b0b;--lt2:#0b0b0b;--lt3:#0b0b0b;--lt4:#fff;--lt5:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#141413;--card:#1a1a19;--text:#f0efec;--muted:#c3c2b7;--line:#30302d;--axis:#55544f;
+--s1:#3987e5;--s2:#d95926;--band1:#3987e533;--band2:#d959262e;--cursor:#f0efec;--ramp0:#14283f;--ramp1:#a9d0fb;--empty:#232322;--good:#6fd19b;--warn:#e0b050;--bad:#f28b82;
+--lv1:#18334f;--lv2:#1f4c7c;--lv3:#2b6fb5;--lv4:#6aa6ea;--lv5:#b9d8fb;--lt1:#f0efec;--lt2:#f0efec;--lt3:#fff;--lt4:#0b0b0b;--lt5:#0b0b0b}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+h1{font-size:16px;margin:0 8px 0 0}
+label{color:var(--muted);font-size:13px;display:inline-flex;gap:5px;align-items:center}
+select,input,button{font:inherit;padding:5px 8px;color:var(--text);background:var(--card);border:1px solid var(--axis);border-radius:6px;min-height:32px}
+button{cursor:pointer}button:hover{background:var(--line)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:12px;padding:12px 16px 32px;align-items:start}
+.panels{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px 8px}
+.panel{position:relative;border-bottom:1px solid var(--line);padding:6px 0 2px}.panel:last-child{border-bottom:0}
+.panel h2{font-size:13px;font-weight:600;margin:0;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.panel small,.sub{color:var(--muted);font-weight:400;font-size:12px}
+.key{display:inline-flex;align-items:center;gap:4px;font-weight:400;color:var(--muted);font-size:12px}
+.key i{width:14px;height:3px;border-radius:2px;display:inline-block}
+canvas{display:block;width:100%;touch-action:none}
+canvas.plot{cursor:crosshair}
+aside{display:grid;gap:12px;position:sticky;top:66px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.card h2{font-size:14px;margin:0 0 2px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:3px 4px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;font-weight:400}
+th:first-child,td:first-child{text-align:left}thead th{color:var(--muted);font-size:12px}
+td.v{font-weight:600}
+.status{color:var(--muted);font-size:13px;min-height:19px}
+.notice{color:var(--muted);font-size:12px;margin:6px 0 0}
+.statusbar{display:flex;flex-wrap:wrap;gap:6px 16px;padding:7px 16px;background:var(--card);border-bottom:1px solid var(--line);font-size:13px;align-items:center}
+.statusbar[hidden]{display:none}
+.chip{display:inline-flex;gap:5px;align-items:baseline}.chip b{font-weight:600}
+.chip.ok .m{color:var(--good)}.chip.stale .m,.chip.error .m{color:var(--bad);font-weight:600}.chip.missing .m,.chip.waiting .m{color:var(--warn)}
+.notices{padding:0 16px;margin:8px 0 0;color:var(--bad);font-size:13px;list-style:none}.notices:empty{display:none}
+dialog{border:1px solid var(--axis);border-radius:10px;background:var(--card);color:var(--text);width:min(760px,94vw);max-height:88vh;padding:16px 18px}
+dialog::backdrop{background:#0007}
+dialog h2{font-size:17px;margin:0 0 4px}dialog h3{font-size:14px;margin:14px 0 4px}
+.found{display:flex;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);align-items:flex-start;cursor:pointer;color:var(--text);font-size:13px}
+.found input{min-height:auto;margin-top:3px}.found .p{word-break:break-all;font-weight:600}.found .sub{display:block}
+.row{display:flex;gap:6px;margin-top:6px}.row input{flex:1;min-width:0}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+button.primary{background:var(--s1);color:#fff;border-color:var(--s1)}
+.err{color:var(--bad);font-size:13px;margin:8px 0 0}
+.datewrap{position:relative;display:inline-flex;gap:4px;align-items:center}
+#dateBtn{min-width:150px;text-align:left;font-weight:600}
+#cal{position:absolute;top:calc(100% + 6px);left:0;z-index:20;width:364px;background:var(--card);border:1px solid var(--axis);border-radius:10px;padding:10px 12px;box-shadow:0 6px 24px #0004}
+.calhead{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.calhead .title{font-weight:700;background:none;border:0;font-size:15px}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.calgrid .dow{color:var(--muted);text-align:center;font-size:12px;padding:2px 0}
+.day{position:relative;height:42px;min-height:0;padding:0;border:1px solid transparent;border-radius:6px;background:var(--card);color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
+.day:hover{border-color:var(--text);background:inherit}
+.day.none{color:var(--muted)}.day.none:hover{background:var(--card)}
+.day .n{position:absolute;right:3px;top:1px;font-size:10px;font-weight:700;line-height:12px}
+.day .h{position:absolute;left:0;right:0;bottom:1px;font-size:10px;line-height:11px}
+.day.selected{outline:2px solid var(--text);outline-offset:1px}
+.monthgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.month{height:58px;min-height:0;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);padding:2px;font-weight:600}
+.month small{display:block;font-size:11px;font-weight:400}.month.none{color:var(--muted);font-weight:400}.month:hover{border-color:var(--text)}
+.lv1{background:var(--lv1)!important;color:var(--lt1)!important}.lv2{background:var(--lv2)!important;color:var(--lt2)!important}.lv3{background:var(--lv3)!important;color:var(--lt3)!important}.lv4{background:var(--lv4)!important;color:var(--lt4)!important}.lv5{background:var(--lv5)!important;color:var(--lt5)!important}
+.callegend{display:flex;flex-wrap:wrap;gap:3px 8px;margin-top:9px;font-size:11px;color:var(--muted);align-items:center}
+.swatch{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:3px;border:1px solid var(--line)}
+#calInfo{min-height:34px;margin-top:6px;font-size:12px;color:var(--text);border-top:1px solid var(--line);padding-top:5px}
+#daySummary{padding:7px 16px;background:var(--card);border-bottom:1px solid var(--line);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 16px}
+#daySummary b{font-weight:700}
+.params{padding:8px 0 4px;border-top:2px solid var(--line);margin-top:6px}
+.params summary{font-weight:600;cursor:pointer;font-size:14px}
+.ptabs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:1px 12px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.pgrid label{color:var(--text);font-size:12.5px;display:flex;gap:5px;align-items:center;min-height:24px}
+.pgrid input{min-height:auto}
+#diag{grid-column:1/-1;display:grid;gap:12px}
+.dcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.dcard h2{font-size:14px;margin:0 0 2px}
+.verdict{font-size:15px;font-weight:600;margin:0 0 8px}
+.story{border-left:4px solid var(--s1)}
+.headline{font-size:17px;font-weight:700;margin:0 0 8px}
+.timeline{list-style:none;margin:0 0 10px;padding:0;font-size:13.5px}
+.timeline li{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px;padding:3px 0;border-bottom:1px solid var(--line)}
+.timeline .when{font-variant-numeric:tabular-nums;font-weight:600}
+.storygrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px 18px}
+.storygrid h3{font-size:14px;margin:0 0 3px}.storygrid p{margin:0 0 4px;font-size:13.5px;line-height:1.55}
+.storygrid button{min-height:26px;padding:1px 7px;margin:2px 4px 0 0;font-size:12.5px}
+.trust{list-style:none;margin:2px 0 0;padding:0;font-size:13.5px}.trust li{padding:2px 0}
+.trust .good{color:var(--good);font-weight:700}.trust .care{color:var(--warn);font-weight:700}.trust .bad{color:var(--bad);font-weight:700}
+details.dcard>summary{cursor:pointer;font-size:13.5px}
+#verdict{font-weight:600}
+.cbar{display:inline-flex;align-items:center;gap:4px;font-weight:400;font-size:11.5px;color:var(--muted)}
+.cbar i{display:block;width:150px;height:10px;border-radius:2px}
+.cbar b{font-weight:400;display:inline-flex;justify-content:space-between;width:150px;position:relative}
+.cscale{display:inline-flex;flex-direction:column;gap:1px;vertical-align:middle}
+.cscale .ticks{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text);line-height:11px;width:190px}
+.cscale i{display:block;width:190px;height:9px;border-radius:2px}
+.heatread{font-weight:400;font-size:12px;color:var(--text)}
+.issues{list-style:none;margin:0;padding:0;font-size:13.5px}
+.issues li{padding:3px 0}.issues b{font-weight:600}
+.issues .problem{color:var(--bad);font-weight:700}.issues .watch{color:var(--warn);font-weight:700}.issues .ok{color:var(--good)}.issues .na{color:var(--muted)}
+#okChecks summary{cursor:pointer;color:var(--muted);font-size:13px;margin-top:4px}
+.manual{border-left:4px solid var(--warn)}
+.manual table{font-size:13px}.manual td,.manual th{text-align:left;font-variant-numeric:normal}
+.manual td.flag{color:var(--warn);font-weight:600}
+.wrap-table{overflow-x:auto}
+.dh{font-size:14px;margin:14px 0 2px}
+.tag{font-weight:600;font-size:11px;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 4px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:7px}
+.tile{all:unset;box-sizing:border-box;display:block;border:1px solid var(--line);border-left-width:4px;border-radius:6px;padding:6px 9px;cursor:pointer;min-width:0}
+.tile:hover,.tile:focus-visible{background:var(--line)}
+.tile b{display:block;font-size:12.5px;color:var(--muted);font-weight:500}
+.tile span{display:block;font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.tile.ok{border-left-color:var(--good)}.tile.watch{border-left-color:var(--warn)}.tile.problem{border-left-color:var(--bad)}.tile.na{border-left-color:var(--axis);opacity:.72}
+.tile i{font-style:normal;font-size:12px;font-weight:600;margin-right:3px}.tile.ok i{color:var(--good)}.tile.watch i{color:var(--warn)}.tile.problem i{color:var(--bad)}.tile.na i{color:var(--muted)}
+#checkDetail{min-height:38px;margin:8px 0 0;font-size:13px;color:var(--text);border-top:1px solid var(--line);padding-top:6px}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px}
+.dgrid canvas{height:150px}
+.dcaption{font-size:12px;color:var(--muted);min-height:32px;margin-top:2px}
+.dcaption b{color:var(--text)}
+.events{max-height:210px;overflow:auto}
+.day .warn{position:absolute;left:3px;top:0;font-size:10px;line-height:13px;font-weight:700}
+button.on{background:var(--text);color:var(--card);border-color:var(--text)}
+.ramp{display:inline-block;width:70px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--ramp0),var(--ramp1));vertical-align:middle;margin:0 4px}
+@media (max-width:980px){main{grid-template-columns:minmax(0,1fr)}aside{position:static}}
+</style>
+</head>
+<body>
+<header>
+  <h1>CDP · LWC-300 · 11-D 面板</h1>
+  <button id="setupBtn" hidden>設定資料夾</button>
+  <span id="modes" hidden><button id="liveBtn">即時</button> <button id="historyBtn">歷史</button></span>
+  <label id="spanBox" hidden>顯示最近<select id="span"><option value="600">10 分鐘</option><option value="1800">30 分鐘</option><option value="3600" selected>1 小時</option><option value="10800">3 小時</option><option value="21600">6 小時</option><option value="86400">24 小時</option></select></label>
+  <span id="historyTools" style="display:contents">
+  <span class="datewrap" id="dateWrap">
+    <label for="dateBtn">日期</label>
+    <button id="dateBtn" aria-haspopup="dialog" aria-expanded="false">選擇日期</button>
+    <button id="prevDay" title="前一個有觀測的日子">‹</button>
+    <button id="latestDay" title="最近一次有觀測的日子">最新</button>
+    <button id="nextDay" title="後一個有觀測的日子">›</button>
+    <div id="cal" role="dialog" aria-label="選擇日期" hidden></div>
+  </span>
+  <label>批次<select id="campaign"><option value="">選擇批次</option></select></label>
+  <label>開始<input id="start" type="datetime-local"></label>
+  <label>結束<input id="end" type="datetime-local"></label>
+  <button id="prev" title="往前一個視窗長度">← 往前</button>
+  <button id="next" title="往後一個視窗長度">往後 →</button>
+  <button id="out">縮小範圍倍率</button>
+  <button id="back">回上一個範圍</button>
+  </span>
+  <span class="status" id="status"></span>
+</header>
+<div id="daySummary" hidden></div>
+<div class="statusbar" id="statusbar" hidden aria-live="polite"></div>
+<ul class="notices" id="notices"></ul>
+<main>
+  <div id="diag" hidden>
+    <section class="dcard story" aria-label="這天的故事">
+      <p class="headline" id="storyHead"></p>
+      <ol class="timeline" id="storyTime"></ol>
+      <div class="storygrid" id="storyBody"></div>
+      <h3 class="dh">這天的資料可以怎麼用</h3>
+      <ul class="trust" id="storyTrust"></ul>
+    </section>
+    <details class="dcard" id="checksBox">
+      <summary><span id="verdict"></span></summary>
+      <ul class="issues" id="issues"></ul>
+      <ul class="issues muted" id="okList"></ul>
+    </details>
+    <details class="dcard manual" id="manualBox">
+      <summary><b>⚠ 手動輸入的值(不是儀器量到的):</b><span id="manualBrief"></span></summary>
+      <p class="sub" id="manualLead"></p>
+      <div class="wrap-table"><table id="manual"><thead><tr><th>參數</th><th>輸入值</th><th>對結果的影響(估計)</th><th>檢查</th></tr></thead><tbody></tbody></table></div>
+    </details>
+  </div>
+  <section class="panels" aria-label="時間序列">
+    <div id="panels"></div>
+    <div id="extraPanels"></div>
+    <details class="params" id="moreSize" hidden>
+      <summary>CDP 粒徑分布、11-D PM</summary>
+      <div id="sizePanels"></div>
+    </details>
+    <details class="params" id="moreAnalysis" hidden>
+      <summary>更多分析(資料狀態、和過去比較、特徵關係)</summary>
+      <h3 class="dh">資料狀態</h3>
+      <canvas id="lanes" aria-label="各狀態的時間軸"></canvas>
+      <div class="dcaption" id="laneCaption">游標移到圖上可看時間。</div>
+      <h3 class="dh">和過去比較</h3>
+      <div class="sub">藍色長條是這段時間,橘線是過去野外資料;百分位表示這段時間的中位數在過去的位置。</div>
+      <div class="dgrid" id="dists"></div>
+      <h3 class="dh">特徵關係(雲中每分鐘)</h3>
+      <div class="dgrid" id="scatters"></div>
+    </details>
+    <details class="params" id="params" hidden>
+      <summary>全部參數(勾選後會在上方加一張同步的圖)</summary>
+      <div class="ptabs" id="ptabs"></div>
+      <div class="pgrid" id="pgrid"></div>
+      <div class="sub" style="margin-top:6px">粒徑區間在上方的粒徑—時間圖和右側分布圖。每格是時間平均,最短 1 分鐘。<button id="clearChannels" style="margin-left:8px">清除勾選</button></div>
+    </details>
+  </section>
+  <aside>
+    <div class="card">
+      <h2 id="specTitle">粒徑分布</h2>
+      <div class="sub" id="specSub">游標移到左圖可看該時間</div>
+      <canvas id="spec" height="290" aria-label="CDP 與 11-D 粒徑分布"></canvas>
+      <div class="sub" id="specKey"></div>
+    </div>
+    <div class="card">
+      <h2 id="readTitle">數值</h2>
+      <table id="read"><thead><tr><th>項目</th><th>目前</th><th>過去典型(5–95%)</th></tr></thead><tbody></tbody></table>
+      <p class="notice">「典型」是過去野外資料的統計範圍:濃度、LWC、MVD 為雲中;PM 為全部時間。超出不代表有問題,僅供參考。</p>
+    </div>
+  </aside>
+</main>
+<dialog id="setup" aria-labelledby="setupTitle">
+  <h2 id="setupTitle">設定資料夾</h2>
+  <div class="sub">自動尋找只看檔名和修改時間,不會開啟檔案,也不會更動任何資料。不搜尋隨身碟、網路磁碟和雲端硬碟。</div>
+  <div class="actions" style="justify-content:flex-start">
+    <button id="searchBtn" class="primary">開始自動尋找</button>
+    <button id="cancelBtn" hidden>停止尋找</button>
+    <span class="status" id="searchStatus"></span>
+  </div>
+  <p class="err" id="busyNote" hidden>▲ 儀器正在收資料。掃描硬碟可能影響收資料,建議停止記錄後再尋找,或直接手動輸入。</p>
+  <h3>PADS 資料夾(CDP、LWC-300)</h3>
+  <div id="padsList"></div>
+  <div class="row"><input id="padsManual" placeholder="或輸入路徑,例如 C:\DMT\PADS Data" aria-label="手動輸入 PADS 資料夾"><button data-add="pads">加入</button></div>
+  <h3>11-D 資料夾</h3>
+  <div id="d11List"></div>
+  <div class="row"><input id="d11Manual" placeholder="或輸入路徑" aria-label="手動輸入 11-D 資料夾"><button data-add="d11">加入</button></div>
+  <p class="sub" id="d11Hint">11-D 是依檔名(-C、-M、-L)或資料夾名稱(11D、11-D、D11)判斷。找不到時請直接輸入資料夾路徑。</p>
+  <h3>上傳和通知</h3>
+  <div class="row"><label style="flex:1;min-width:0">雲端資料夾<input id="cloudFolder" style="flex:1;min-width:0" placeholder="例如 G:\我的雲端硬碟"></label></div>
+  <div class="row"><label style="flex:1;min-width:0">測站名稱<input id="siteName" style="flex:1;min-width:0" placeholder="例如 鹿林;會出現在通知和雲端資料夾名稱"></label></div>
+  <div class="row"><label style="flex:1;min-width:0">Discord Webhook<input id="discordHook" type="password" autocomplete="off" style="flex:1;min-width:0" placeholder="貼上 Webhook 網址"></label><button id="testDiscord" style="white-space:nowrap">傳測試訊息</button></div>
+  <p class="sub" id="remoteHint">資料會複製到「雲端資料夾/CDPLWC_現場/測站名稱」,由 Google 雲端硬碟電腦版上傳。Webhook 等同密碼,只存在這台電腦。</p>
+  <p class="err" id="setupError" hidden></p>
+  <div class="actions"><button id="closeSetup">取消</button><button id="applySetup" class="primary">套用</button></div>
+  <p class="sub" id="configPath"></p>
+</dialog>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const state = {index: null, data: null, history: [], hover: null, drag: null, token: 0, live: false, timer: null, day: null, calYear: null, calMonth: null, calView: "days", ptab: null, chosen: []};
+const EXTRA = [];
+const MANUAL_TAG = "流速是手動值";
+const PANELS = [
+  {id: "number", title: "CDP 濃度", unit: "#/cm³", kind: "line", src: "cdp", series: [["number_cm3", "CDP", "--s1"]], h: 96, tag: MANUAL_TAG},
+  {id: "lwc", title: "液態水含量", unit: "g/m³", kind: "line", src: "cdp", series: [["lwc_gm3", "CDP", "--s1"], ["hotwire_gm3", "LWC-300", "--s2"]], h: 112, zero: true, robust: true, tag: "流速、壓力、溫度是手動值"},
+  {id: "mvd", title: "CDP MVD", unit: "µm", kind: "line", src: "cdp", series: [["mvd_um", "MVD", "--s1"]], h: 84},
+  {id: "d11heat", title: "11-D 粒徑分布", unit: "粒徑對數軸", kind: "heat", src: "d11", edges: "d11_edges", h: 170, axis: true, range: [-3, 3], always: true},
+];
+const SIZE_PANELS = [
+  {id: "cdpheat", title: "CDP 粒徑分布", unit: "粒徑對數軸", kind: "heat", src: "cdp", edges: "cdp_edges", h: 150, range: [-2, 4]},
+  {id: "pm", title: "11-D PM", unit: "µg/m³,對數軸,15 分鐘中位數", kind: "line", src: "d11", series: [["PM2.5", "PM2.5", "--s1"], ["coarse", "粗粒(PM10−PM2.5)", "--s2"]], h: 118, log: true, smooth: 900, axis: true},
+];
+const LEFT = 52, RIGHT = 10;
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function stamp(t, seconds) {
+  const d = new Date(t * 1000);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${seconds ? ":" + pad(d.getUTCSeconds()) : ""}`;
+}
+function toInput(t) { return stamp(t).replace(" ", "T"); }
+function fromInput(v) { return Math.round(Date.parse(v + ":00Z") / 1000); }
+function fmt(v) {
+  if (v === null || v === undefined || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if (a >= 1000) return Math.round(v).toLocaleString("en-US");
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  return v.toFixed(3);
+}
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-6; v += step) out.push(Math.abs(v) < step * 1e-6 ? 0 : v);
+  return out;
+}
+function setup(canvas, height) {
+  const ratio = window.devicePixelRatio || 1, width = canvas.clientWidth;
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  canvas.style.height = height + "px";
+  const c = canvas.getContext("2d");
+  c.setTransform(ratio, 0, 0, ratio, 0, 0);
+  c.clearRect(0, 0, width, height);
+  c.font = '12px "Microsoft JhengHei","PingFang TC",sans-serif';
+  return {c, width, height};
+}
+function buildPanels() {
+  for (const p of PANELS) addPanel(p, $("panels"));
+  for (const p of SIZE_PANELS) addPanel(p, $("sizePanels"));
+  window.addEventListener("mouseup", finishDrag);
+}
+function addPanel(p, box) {
+  {
+    const div = document.createElement("div");
+    div.className = "panel";
+    const keys = (p.series || []).length > 1 ? p.series.map(s => `<span class="key"><i style="background:var(${s[2]})"></i>${s[1]}</span>`).join("") : "";
+    const tag = p.tag ? `<span class="tag" title="這張圖的數值取決於手動輸入的設定">⚠ ${p.tag}</span>` : "";
+    div.innerHTML = `<h2>${p.title} <small>${p.unit}</small>${tag}${keys}<small id="${p.id}Scale"></small></h2><canvas class="plot" id="${p.id}"></canvas>`;
+    box.appendChild(div);
+    const canvas = div.querySelector("canvas");
+    canvas.style.height = p.h + (p.axis ? 18 : 0) + "px";
+    canvas.addEventListener("mousemove", e => pointer(e, canvas));
+    canvas.addEventListener("mouseleave", () => { if (!state.drag) { state.hover = null; drawAll(); } });
+    canvas.addEventListener("mousedown", e => { if (state.live) return; const x = localX(e, canvas); state.drag = {x0: x, x1: x}; });
+    canvas.addEventListener("dblclick", goBack);
+  }
+}
+function finishDrag() {
+    if (!state.drag) return;
+    const {x0, x1} = state.drag;
+    state.drag = null;
+    if (Math.abs(x1 - x0) > 6) {
+      const a = timeAt(Math.min(x0, x1)), b = timeAt(Math.max(x0, x1));
+      const start = Math.floor(a / 60) * 60, end = Math.max(Math.ceil(b / 60) * 60, start + 60);
+      navigate(start, end);
+    } else drawAll();
+}
+function localX(e, canvas) { return e.clientX - canvas.getBoundingClientRect().left; }
+function plotWidth() { return $("number").clientWidth - LEFT - RIGHT; }
+function timeAt(x) {
+  const d = state.data, w = plotWidth();
+  return d.start + Math.min(Math.max(x - LEFT, 0), w) / w * (d.end - d.start);
+}
+function xAt(t) { const d = state.data; return LEFT + (t - d.start) / (d.end - d.start) * plotWidth(); }
+function pointer(e, canvas) {
+  if (!state.data) return;
+  const x = localX(e, canvas);
+  if (state.live) state.drag = null;
+  if (state.drag) state.drag.x1 = x;
+  const k = Math.floor((timeAt(x) - state.data.start) / state.data.step);
+  state.hover = Math.min(Math.max(k, 0), state.data.count - 1);
+  drawAll();
+  const panel = [...PANELS, ...SIZE_PANELS].find(p => p.id === canvas.id);
+  if (panel && panel.kind === "heat") heatReadout(panel, canvas, e);
+}
+function timeTicks() {
+  const d = state.data, span = d.end - d.start;
+  const steps = [600, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 432000, 864000, 2592000];
+  const step = steps.find(s => span / s <= Math.max(3, plotWidth() / 110)) || 2592000;
+  const out = [];
+  for (let t = Math.ceil(d.start / step) * step; t < d.end; t += step) out.push(t);
+  return out;
+}
+function drawFrame(c, p, H, top, bottom, showAxis) {
+  c.strokeStyle = css("--line"); c.lineWidth = 1;
+  for (const t of timeTicks()) { const x = Math.round(xAt(t)) + .5; c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke(); }
+  if (showAxis) {
+    c.fillStyle = css("--muted"); c.textAlign = "center";
+    const ticks = timeTicks(), daily = ticks.length > 1 && ticks[1] - ticks[0] >= 86400;
+    for (const t of ticks) c.fillText(daily ? stamp(t).slice(5, 10) : stamp(t).slice(5), xAt(t), bottom + 14);
+  }
+}
+function overlay(c, top, bottom, w) {
+  const d = state.data;
+  if (state.drag) {
+    c.fillStyle = css("--band1");
+    const a = Math.min(state.drag.x0, state.drag.x1), b = Math.max(state.drag.x0, state.drag.x1);
+    c.fillRect(Math.max(a, LEFT), top, Math.min(b, LEFT + plotWidth()) - Math.max(a, LEFT), bottom - top);
+  }
+  if (state.hover !== null) {
+    const x = xAt(d.start + (state.hover + .5) * d.step);
+    c.strokeStyle = css("--cursor"); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+  }
+}
+function rollingMedian(values, window) {
+  if (window <= 1) return values;
+  const half = Math.floor(window / 2);
+  return values.map((v, i) => {
+    if (v === null) return null;
+    const part = values.slice(Math.max(0, i - half), i + half + 1).filter(x => x !== null).sort((a, b) => a - b);
+    return part.length ? part[Math.floor(part.length / 2)] : null;
+  });
+}
+function prepared(p, src) {
+  if (!p.smooth) return src;
+  const d = state.data;
+  if (d._smoothFor === p.id && d._smooth) return d._smooth;
+  const size = Math.max(1, Math.round(p.smooth / d.step));
+  const series = {};
+  for (const key of Object.keys(src.series)) series[key] = rollingMedian(src.series[key], size);
+  if (series["PM10"] && series["PM2.5"]) series.coarse = series["PM10"].map((v, i) => (v === null || series["PM2.5"][i] === null ? null : Math.max(v - series["PM2.5"][i], 0)));
+  d._smoothFor = p.id;
+  d._smooth = {series, spectrum: src.spectrum};
+  return d._smooth;
+}
+function drawLine(p) {
+  const canvas = $(p.id), H = p.h + (p.axis ? 18 : 0), {c, width} = setup(canvas, H);
+  const top = 6, bottom = p.h - 2, d = state.data;
+  const src = d[p.src] ? prepared(p, d[p.src]) : null;
+  drawFrame(c, p, H, top, bottom, p.axis);
+  if (!src) { noData(c, width, top, bottom, p.src); overlay(c, top, bottom, width); return; }
+  let lo = Infinity, hi = -Infinity;
+  for (const s of p.series) for (const v of src.series[s[0]] || []) if (v !== null && (!p.log || v > 0)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (!isFinite(lo)) { noData(c, width, top, bottom, p.src); overlay(c, top, bottom, width); return; }
+  if (p.robust) {
+    /* 開機瞬間的極端值會把整張圖壓扁,範圍只看 0.5–99.5%,超出的部分畫到邊界外 */
+    const all = [];
+    for (const s of p.series) for (const v of src.series[s[0]] || []) if (v !== null) all.push(v);
+    all.sort((a, b) => a - b);
+    lo = all[Math.floor((all.length - 1) * .005)]; hi = all[Math.floor((all.length - 1) * .995)];
+  }
+  let y;
+  if (p.log) {
+    lo = Math.max(Math.pow(10, Math.floor(Math.log10(lo))), 0.01); hi = Math.pow(10, Math.ceil(Math.log10(hi)));
+    if (hi <= lo) hi = lo * 10;
+    y = v => bottom - (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo)) * (bottom - top);
+  } else {
+    if (!p.zero && !p.noZero) lo = Math.min(lo, 0);
+    if (hi === lo) hi = lo + 1;
+    const m = (hi - lo) * .06; hi += m; if (lo < 0) lo -= m;
+    y = v => bottom - (v - lo) / (hi - lo) * (bottom - top);
+  }
+  c.fillStyle = css("--muted"); c.textAlign = "right"; c.strokeStyle = css("--line");
+  const ticks = p.log ? [0.01, 0.1, 1, 10, 100, 1000].filter(t => t >= lo && t <= hi) : niceTicks(lo, hi, 3);
+  for (const t of ticks) {
+    const py = Math.round(y(t)) + .5;
+    c.beginPath(); c.moveTo(LEFT, py); c.lineTo(width - RIGHT, py); c.stroke();
+    c.fillText(p.log ? power(Math.round(Math.log10(t))) : fmt(t), LEFT - 6, py + 4);
+  }
+  if (!p.log && lo < 0) { c.strokeStyle = css("--axis"); const py = Math.round(y(0)) + .5; c.beginPath(); c.moveTo(LEFT, py); c.lineTo(width - RIGHT, py); c.stroke(); }
+  c.save(); c.beginPath(); c.rect(LEFT, top, width - LEFT - RIGHT, bottom - top); c.clip();
+  for (const s of p.series) {
+    const vals = src.series[s[0]] || [];
+    c.strokeStyle = css(s[2]); c.lineWidth = 1.5; c.lineJoin = "round"; c.beginPath();
+    let open = false;
+    vals.forEach((v, i) => {
+      if (v === null || (p.log && v <= 0)) { open = false; return; }
+      const x = xAt(d.start + (i + .5) * d.step), py = y(v);
+      if (open) c.lineTo(x, py); else { c.moveTo(x, py); open = true; }
+    });
+    c.stroke();
+    if (state.hover !== null && vals[state.hover] !== null && vals[state.hover] !== undefined) {
+      c.fillStyle = css(s[2]); c.strokeStyle = css("--card"); c.lineWidth = 2;
+      c.beginPath(); c.arc(xAt(d.start + (state.hover + .5) * d.step), y(vals[state.hover]), 4, 0, 7); c.fill(); c.stroke();
+    }
+  }
+  c.restore();
+  overlay(c, top, bottom, width);
+}
+function noData(c, width, top, bottom, src) {
+  c.fillStyle = css("--empty"); c.fillRect(LEFT, top, width - LEFT - RIGHT, bottom - top);
+  c.fillStyle = css("--muted"); c.textAlign = "center";
+  c.fillText(`此範圍沒有${src === "cdp" ? " CDP " : src === "d11" ? " 11-D " : "這個參數的"}資料`, (LEFT + width - RIGHT) / 2, (top + bottom) / 2 + 4);
+}
+function mix(a, b, t) { return a.map((v, i) => Math.round(v + (b[i] - v) * t)); }
+function hexRgb(h) { const n = parseInt(h.replace("#", ""), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function drawHeat(p) {
+  if (!p.always && !$("moreSize").open) return;
+  const canvas = $(p.id), H = p.h + (p.axis ? 18 : 0), {c, width} = setup(canvas, H);
+  const top = 6, bottom = p.h - 2, d = state.data, src = d[p.src], edges = d[p.edges];
+  drawFrame(c, p, H, top, bottom, p.axis);
+  if (!src || !edges || !src.spectrum) { noData(c, width, top, bottom, p.src); overlay(c, top, bottom, width); $(p.id + "Scale").textContent = ""; return; }
+  const [lo, hi] = p.range;
+  const logLo = Math.log10(edges[0]), logHi = Math.log10(edges[edges.length - 1]);
+  const y = v => bottom - (Math.log10(v) - logLo) / (logHi - logLo) * (bottom - top);
+  const cell = plotWidth() / d.count;
+  c.fillStyle = css("--empty"); c.fillRect(LEFT, top, plotWidth(), bottom - top);
+  src.spectrum.forEach((col, j) => {
+    const y0 = y(edges[j + 1]), y1 = y(edges[j]);
+    col.forEach((v, i) => {
+      if (v === null) return;
+      if (v <= 0) { c.fillStyle = css("--card"); }
+      else { c.fillStyle = turbo((Math.log10(v) - lo) / (hi - lo)); }
+      c.fillRect(LEFT + i * cell, y0, cell + .6, y1 - y0 + .6);
+    });
+  });
+  c.fillStyle = css("--muted"); c.textAlign = "right";
+  for (const t of [.3, 1, 3, 10, 30]) if (t >= edges[0] && t <= edges[edges.length - 1]) c.fillText(t + " µm", LEFT - 6, y(t) + 4);
+  drawColorScale(p);
+  overlay(c, top, bottom, width);
+}
+function turbo(x) {
+  /* 彩色色階(Turbo),和光達圖一樣用顏色分開數量級 */
+  const t = Math.min(Math.max(x, 0), 1);
+  const r = 34.61 + t * (1172.33 - t * (10793.56 - t * (33300.12 - t * (38394.49 - t * 14825.05))));
+  const g = 23.31 + t * (557.33 + t * (1225.33 - t * (3574.96 - t * (1073.77 + t * 707.56))));
+  const b = 27.2 + t * (3211.1 - t * (15327.97 - t * (27814 - t * (22569.18 - t * 6838.66))));
+  const clip = v => Math.round(Math.min(Math.max(v, 0), 255));
+  return `rgb(${clip(r)},${clip(g)},${clip(b)})`;
+}
+function power(e) { return e === 0 ? "1" : "10" + sup(e); }
+function drawColorScale(p) {
+  const el = $(p.id + "Scale");
+  if (el.dataset.ready) return;
+  el.dataset.ready = "1";
+  const [lo, hi] = p.range, stops = [];
+  for (let i = 0; i <= 12; i++) stops.push(turbo(i / 12));
+  const ticks = [];
+  for (let e = lo; e <= hi; e++) ticks.push(`<span>${power(e)}</span>`);
+  el.innerHTML = `<span class="cscale" aria-label="顏色代表 dN/dlogD,對數刻度"><span class="ticks">${ticks.join("")}</span><i style="background:linear-gradient(90deg,${stops.join(",")})"></i></span> <span class="heatread">cm⁻³(白色=沒有粒子)</span> <span class="heatread" id="${p.id}Read"></span>`;
+}
+function heatReadout(p, canvas, e) {
+  const d = state.data, src = d && d[p.src], edges = d && d[p.edges], out = $(p.id + "Read");
+  if (!src || !src.spectrum || !edges || !out || state.hover === null) return;
+  const rect = canvas.getBoundingClientRect(), py = e.clientY - rect.top, top = 6, bottom = p.h - 2;
+  const logLo = Math.log10(edges[0]), logHi = Math.log10(edges[edges.length - 1]);
+  const size = Math.pow(10, logLo + (bottom - py) / (bottom - top) * (logHi - logLo));
+  const j = edges.findIndex((edge, i) => i < edges.length - 1 && size >= edge && size < edges[i + 1]);
+  if (j < 0) { out.textContent = ""; return; }
+  const v = src.spectrum[j][state.hover];
+  out.textContent = `· ${edges[j].toPrecision(3)} µm:${v === null ? "沒有資料" : fmt(v) + " cm⁻³"}`;
+}
+function bucketSpectrum(src) {
+  if (!src) return null;
+  if (!src.spectrum) return null;
+  if (state.hover !== null) return src.spectrum.map(col => col[state.hover]);
+  if (state.live) {
+    const count = src.spectrum[0].length;
+    for (let k = count - 1; k >= 0; k--) if (src.spectrum.some(col => col[k] !== null)) return src.spectrum.map(col => col[k]);
+    return null;
+  }
+  return src.spectrum.map(col => {
+    const good = col.filter(v => v !== null);
+    return good.length ? good.reduce((s, v) => s + v, 0) / good.length : null;
+  });
+}
+function drawSpectrum() {
+  const canvas = $("spec"), H = 290, {c, width} = setup(canvas, H), idx = state.index, d = state.data;
+  const L = 48, R = 8, T = 8, B = H - 30;
+  const X0 = Math.log10(.2), X1 = Math.log10(60), Y0 = -3, Y1 = 4;
+  const x = v => L + (Math.log10(v) - X0) / (X1 - X0) * (width - L - R);
+  const y = v => B - (Math.log10(v) - Y0) / (Y1 - Y0) * (B - T);
+  c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.lineWidth = 1;
+  for (let e = Y0; e <= Y1; e++) {
+    c.beginPath(); c.moveTo(L, y(10 ** e)); c.lineTo(width - R, y(10 ** e)); c.stroke();
+    c.textAlign = "right"; c.fillText(e === 0 ? "1" : "10" + sup(e), L - 5, y(10 ** e) + 4);
+  }
+  for (const t of [.3, 1, 3, 10, 30]) {
+    c.beginPath(); c.moveTo(x(t), T); c.lineTo(x(t), B); c.stroke();
+    c.textAlign = "center"; c.fillText(String(t), x(t), B + 15);
+  }
+  c.textAlign = "center"; c.fillText("粒徑(µm)", (L + width - R) / 2, H - 2);
+  const n = idx.normal;
+  if (n) {
+    drawBand(c, n.cdp_edges, n.cdp_cloud_spectrum, "--band1", x, y);
+    drawBand(c, n.d11_edges, n.d11_spectrum_all, "--band2", x, y);
+  }
+  c.save(); c.beginPath(); c.rect(L, T, width - L - R, B - T); c.clip();
+  drawSteps(c, d && d.cdp_edges, bucketSpectrum(d && d.cdp), "--s1", x, y);
+  drawSteps(c, d && d.d11_edges, bucketSpectrum(d && d.d11), "--s2", x, y);
+  c.restore();
+  $("specKey").innerHTML = `<span class="key"><i style="background:var(--s1)"></i>CDP</span> <span class="key"><i style="background:var(--s2)"></i>11-D</span> <span class="key"><i style="background:var(--band1);height:9px"></i>CDP 雲中典型</span> <span class="key"><i style="background:var(--band2);height:9px"></i>11-D 典型</span>`;
+  $("specTitle").textContent = "粒徑分布 dN/dlogD(cm⁻³)";
+  $("specSub").textContent = d ? (state.hover !== null ? stamp(d.start + state.hover * d.step, true) + " 起 " + d.step + " 秒" : (state.live ? "最新一筆;游標移到左圖可看該時間" : "目前範圍的平均;游標移到左圖可看該時間")) : "";
+}
+function sup(e) { return String(e).replace("-", "⁻").replace(/\d/g, m => "⁰¹²³⁴⁵⁶⁷⁸⁹"[m]); }
+function drawBand(c, edges, band, color, x, y) {
+  if (!band || !band.p10) return;
+  c.fillStyle = css(color); c.beginPath();
+  let started = false;
+  const pts = [];
+  band.p90.forEach((v, i) => { if (v > 0 && band.p10[i] > 0) pts.push([x(edges[i]), x(edges[i + 1]), y(v), y(band.p10[i])]); });
+  for (const p of pts) { if (!started) { c.moveTo(p[0], p[2]); started = true; } else c.lineTo(p[0], p[2]); c.lineTo(p[1], p[2]); }
+  for (const p of pts.slice().reverse()) { c.lineTo(p[1], p[3]); c.lineTo(p[0], p[3]); }
+  c.closePath(); c.fill();
+}
+function drawSteps(c, edges, values, color, x, y) {
+  if (!values || !edges) return;
+  c.strokeStyle = css(color); c.lineWidth = 1.8; c.beginPath();
+  let open = false;
+  values.forEach((v, i) => {
+    if (v === null || v <= 0) { open = false; return; }
+    const py = y(v);
+    if (open) c.lineTo(x(edges[i]), py); else { c.moveTo(x(edges[i]), py); open = true; }
+    c.lineTo(x(edges[i + 1]), py);
+  });
+  c.stroke();
+}
+function typical(q) { return q && q.p5 !== undefined ? `${fmt(q.p5)} – ${fmt(q.p95)}` : "—"; }
+function drawRead() {
+  const d = state.data, body = $("read").tBodies[0];
+  if (!d) { body.innerHTML = ""; return; }
+  const n = state.index.normal, field = n ? n.cloud_metrics["全部野外"] : {}, pm = n ? n.d11_metrics["全部野外"] : {};
+  const pick = (src, key) => {
+    const s = d[src];
+    if (!s) return null;
+    const col = s.series[key];
+    if (state.hover !== null) return col[state.hover];
+    if (state.live) { for (let k = col.length - 1; k >= 0; k--) if (col[k] !== null) return col[k]; return null; }
+    const good = col.filter(v => v !== null);
+    return good.length ? good.reduce((a, v) => a + v, 0) / good.length : null;
+  };
+  const rows = [
+    ["CDP 濃度(#/cm³)", pick("cdp", "number_cm3"), field.number_cm3],
+    ["CDP LWC(g/m³)", pick("cdp", "lwc_gm3"), field.lwc_gm3],
+    ["LWC-300(g/m³)", pick("cdp", "hotwire_gm3"), null],
+    ["CDP MVD(µm)", pick("cdp", "mvd_um"), field.mvd_um],
+    ["CDP 流速設定(m/s)", pick("cdp", "pas_ms"), null],
+    ["PM2.5(µg/m³)", pick("d11", "PM2.5"), pm["PM2.5"]],
+    ["PM10(µg/m³)", pick("d11", "PM10"), pm.PM10],
+    ["11-D 壓力(hPa)", pick("d11", "Pres"), null],
+  ];
+  body.innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td class="v">${fmt(r[1])}</td><td>${typical(r[2])}</td></tr>`).join("");
+  const session = state.hover === null ? null : d.sessions.find(s => { const t = d.start + state.hover * d.step; return t >= s.start && t < s.end; });
+  $("readTitle").textContent = state.hover === null ? (state.live ? "最新數值" : "數值(目前範圍平均)") : stamp(d.start + state.hover * d.step) + (session ? ` · ${session.campaign} · ${session.sid}` : "");
+}
+function drawAll() {
+  if (!state.data) return;
+  for (const p of PANELS) p.kind === "heat" ? drawHeat(p) : drawLine(p);
+  if ($("moreSize").open) for (const p of SIZE_PANELS) p.kind === "heat" ? drawHeat(p) : drawLine(p);
+  if (!state.live) for (const p of EXTRA) { drawLine(p); drawExtraValue(p); }
+  drawSpectrum();
+  drawRead();
+}
+async function load(start, end) {
+  const token = ++state.token;
+  $("status").textContent = "載入中…";
+  const width = Math.max(100, Math.floor($("panels").clientWidth - LEFT - RIGHT - 20));
+  const response = await fetch(`/api/window?start=${start}&end=${end}&width=${width}`);
+  if (!response.ok) { $("status").textContent = "載入失敗"; return; }
+  const data = await response.json();
+  if (token !== state.token) return;
+  data.extraSrc = {series: await fetchChannels(data)};
+  if (token !== state.token) return;
+  state.data = data; state.hover = null;
+  syncDay(data);
+  loadDiagnosis(data.start, data.end);
+  $("start").value = toInput(data.start); $("end").value = toInput(data.end);
+  const parts = [];
+  if (!data.cdp) parts.push("此範圍沒有 CDP");
+  if (!data.d11) parts.push("此範圍沒有 11-D");
+  $("status").textContent = `每格 ${data.step >= 60 ? data.step / 60 + " 分鐘" : data.step + " 秒"}${parts.length ? " · " + parts.join("、") : ""}`;
+  drawAll();
+}
+/* ---------- 日曆 ---------- */
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const LEVELS = [[1, "1 小時內"], [6, "1–6"], [12, "6–12"], [20, "12–20"], [Infinity, "20 小時以上"]];
+const MONTH_LEVELS = [[3, "1–3 天"], [9, "4–9"], [15, "10–15"], [22, "16–22"], [Infinity, "23 天以上"]];
+function dayKey(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
+function dayInfo(key) { return state.index.calendar[key] || null; }
+function hoursOf(info) { return Math.max(0, ...Object.values(info.minutes)) / 60; }
+function levelOf(value, table) { return table.findIndex(l => value <= l[0]) + 1; }
+function instrumentText(info) {
+  const names = state.index.channels;
+  return Object.entries(info.minutes).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${names[k] ? names[k].label : k} ${(v / 60).toFixed(1)} 小時`).join(" · ");
+}
+function describeDay(key) {
+  const info = dayInfo(key);
+  if (!info) return `${key}:沒有觀測資料`;
+  const cloud = (info.cloud ? ` · 雲中 ${(info.cloud / 60).toFixed(1)} 小時` : "") + (info.problem ? ` · ${info.problem} 項有問題` : "") + (info.watch ? ` · ${info.watch} 項要注意` : "");
+  return `${key}:${Object.keys(info.minutes).length} 台儀器 · ${instrumentText(info)}${cloud}${info.campaigns.length ? " · " + info.campaigns.join("、") : ""}`;
+}
+function observedDays() { return Object.keys(state.index.calendar).sort(); }
+function drawCalendar() {
+  const box = $("cal");
+  box.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "calhead";
+  const prev = document.createElement("button"), next = document.createElement("button"), title = document.createElement("button");
+  prev.textContent = "↑"; next.textContent = "↓"; title.className = "title";
+  const body = document.createElement("div");
+  if (state.calView === "days") {
+    title.textContent = `${state.calYear} 年 ${state.calMonth + 1} 月 ▾`;
+    title.title = "選擇月份";
+    title.onclick = () => { state.calView = "months"; drawCalendar(); };
+    prev.title = "上個月"; next.title = "下個月";
+    prev.onclick = () => stepMonth(-1); next.onclick = () => stepMonth(1);
+    body.className = "calgrid";
+    for (const w of WEEK) { const d = document.createElement("div"); d.className = "dow"; d.textContent = w; body.append(d); }
+    const first = new Date(Date.UTC(state.calYear, state.calMonth, 1)).getUTCDay();
+    const count = new Date(Date.UTC(state.calYear, state.calMonth + 1, 0)).getUTCDate();
+    for (let i = 0; i < first; i++) body.append(document.createElement("div"));
+    for (let d = 1; d <= count; d++) {
+      const key = dayKey(state.calYear, state.calMonth, d), info = dayInfo(key), cell = document.createElement("button");
+      cell.className = "day" + (info ? ` lv${levelOf(hoursOf(info), LEVELS)}` : " none") + (key === state.day ? " selected" : "");
+      cell.textContent = d;
+      cell.setAttribute("aria-label", describeDay(key));
+      if (info) {
+        const n = document.createElement("span"); n.className = "n"; n.textContent = Object.keys(info.minutes).length;
+        const h = document.createElement("span"); h.className = "h"; h.textContent = hoursOf(info).toFixed(hoursOf(info) < 10 ? 1 : 0) + "h";
+        cell.append(n, h);
+        if (info.problem) { const w = document.createElement("span"); w.className = "warn"; w.textContent = "✕"; cell.append(w); }
+        else if (info.watch >= 2) { const w = document.createElement("span"); w.className = "warn"; w.textContent = "▲"; cell.append(w); }
+        cell.onclick = () => { closeCalendar(); openDay(key); };
+      } else cell.onclick = () => { closeCalendar(); openDay(key); };
+      const show = () => { $("calInfo").textContent = describeDay(key); };
+      cell.onmouseenter = show; cell.onfocus = show;
+      body.append(cell);
+    }
+  } else {
+    title.textContent = `${state.calYear} 年`;
+    prev.title = "前一年"; next.title = "後一年";
+    prev.onclick = () => { state.calYear--; drawCalendar(); };
+    next.onclick = () => { state.calYear++; drawCalendar(); };
+    body.className = "monthgrid";
+    for (let m = 0; m < 12; m++) {
+      const prefix = `${state.calYear}-${pad(m + 1)}-`;
+      const keys = observedDays().filter(k => k.startsWith(prefix));
+      const hours = keys.reduce((s, k) => s + hoursOf(dayInfo(k)), 0);
+      const cell = document.createElement("button");
+      cell.className = "month" + (keys.length ? ` lv${levelOf(keys.length, MONTH_LEVELS)}` : " none");
+      cell.textContent = `${m + 1} 月`;
+      const small = document.createElement("small");
+      small.textContent = keys.length ? `${keys.length} 天 · ${Math.round(hours)} 小時` : "無觀測";
+      cell.append(small);
+      const label = `${state.calYear} 年 ${m + 1} 月:` + (keys.length ? `${keys.length} 天有觀測,共約 ${Math.round(hours)} 小時` : "沒有觀測");
+      cell.setAttribute("aria-label", label);
+      const show = () => { $("calInfo").textContent = label; };
+      cell.onmouseenter = show; cell.onfocus = show;
+      cell.onclick = () => { state.calMonth = m; state.calView = "days"; drawCalendar(); };
+      body.append(cell);
+    }
+  }
+  const arrows = document.createElement("span");
+  arrows.append(prev, " ", next);
+  head.append(title, arrows);
+  const legend = document.createElement("div");
+  legend.className = "callegend";
+  const table = state.calView === "days" ? LEVELS : MONTH_LEVELS;
+  legend.append(state.calView === "days" ? "觀測時數" : "觀測天數");
+  table.forEach((l, i) => {
+    const item = document.createElement("span"), swatch = document.createElement("i");
+    swatch.className = `swatch lv${i + 1}`;
+    item.append(swatch, l[1]);
+    legend.append(item);
+  });
+  if (state.calView === "days") legend.append(" · 右上數字=儀器台數 · 左上 ✕=有問題、▲=2 項以上要注意");
+  const info = document.createElement("div");
+  info.id = "calInfo";
+  info.textContent = state.day ? describeDay(state.day) : "游標移到日期可看詳細資料";
+  box.append(head, body, legend, info);
+}
+function stepMonth(delta) {
+  const d = new Date(Date.UTC(state.calYear, state.calMonth + delta, 1));
+  state.calYear = d.getUTCFullYear(); state.calMonth = d.getUTCMonth();
+  drawCalendar();
+}
+function openCalendar() {
+  const key = state.day || observedDays().slice(-1)[0];
+  if (key) { state.calYear = +key.slice(0, 4); state.calMonth = +key.slice(5, 7) - 1; }
+  state.calView = "days";
+  drawCalendar();
+  $("cal").hidden = false;
+  $("dateBtn").setAttribute("aria-expanded", "true");
+}
+function closeCalendar() { $("cal").hidden = true; $("dateBtn").setAttribute("aria-expanded", "false"); }
+function dayStart(key) { return Math.round(Date.parse(key + "T00:00:00Z") / 1000); }
+function openDay(key) { navigate(dayStart(key), dayStart(key) + 86400); }
+function syncDay(data) {
+  const whole = data.end - data.start === 86400 && data.start % 86400 === 0;
+  state.day = whole ? stamp(data.start).slice(0, 10) : null;
+  $("dateBtn").textContent = whole ? state.day : `${stamp(data.start).slice(0, 10)} 起`;
+  const box = $("daySummary");
+  box.hidden = false;
+  box.textContent = state.day ? describeDay(state.day) : `${stamp(data.start)} – ${stamp(data.end)}`;
+}
+function moveDay(delta) {
+  const days = observedDays();
+  if (!days.length) return;
+  const here = state.day || stamp(state.data.start).slice(0, 10);
+  let target;
+  if (delta < 0) target = days.filter(d => d < here).slice(-1)[0];
+  else target = days.find(d => d > here);
+  if (target) openDay(target);
+}
+/* ---------- 全部參數 ---------- */
+function loadChosen() {
+  try { return JSON.parse(localStorage.getItem("chosenChannels") || "[]"); } catch (error) { return []; }
+}
+function saveChosen() {
+  try { localStorage.setItem("chosenChannels", JSON.stringify(state.chosen)); } catch (error) { /* 不能存也不影響使用 */ }
+}
+function channelLabel(full) {
+  const [kind, name] = full.split("|");
+  const inst = state.index.channels[kind];
+  return `${inst ? inst.label : kind} ${name}`;
+}
+function drawTabs() {
+  const tabs = $("ptabs");
+  tabs.replaceChildren();
+  const lists = state.index.channels;
+  for (const kind of Object.keys(lists)) {
+    const b = document.createElement("button");
+    b.textContent = `${lists[kind].label}(${lists[kind].names.length})`;
+    b.classList.toggle("on", kind === state.ptab);
+    b.onclick = () => { state.ptab = kind; drawTabs(); };
+    tabs.append(b);
+  }
+  const grid = $("pgrid");
+  grid.replaceChildren();
+  if (!state.ptab || !lists[state.ptab]) return;
+  for (const name of lists[state.ptab].names) {
+    const full = `${state.ptab}|${name}`;
+    const label = document.createElement("label"), box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = state.chosen.includes(full);
+    box.onchange = () => toggleChannel(full, box.checked);
+    label.append(box, name);
+    grid.append(label);
+  }
+}
+function rebuildExtra() {
+  EXTRA.length = 0;
+  $("extraPanels").replaceChildren();
+  state.chosen.forEach((full, i) => {
+    const p = {id: "x" + i, title: channelLabel(full), unit: "", kind: "line", src: "extraSrc", series: [[full, "", i % 2 ? "--s2" : "--s1"]], h: 84, axis: i === state.chosen.length - 1, full, noZero: true};
+    EXTRA.push(p);
+    addPanel(p, $("extraPanels"));
+  });
+}
+function drawExtraValue(p) {
+  const el = $(p.id + "Scale");
+  if (!el || !state.data) return;
+  const vals = state.data.extraSrc && state.data.extraSrc.series[p.full];
+  if (!vals) { el.textContent = ""; return; }
+  if (state.hover !== null) { el.textContent = "目前 " + fmt(vals[state.hover]); return; }
+  const good = vals.filter(v => v !== null);
+  el.textContent = good.length ? `最小 ${fmt(Math.min(...good))} · 最大 ${fmt(Math.max(...good))}` : "";
+}
+async function fetchChannels(data) {
+  if (!state.chosen.length) return {};
+  const names = encodeURIComponent(state.chosen.join(";"));
+  const response = await fetch(`/api/channels?start=${data.start}&end=${data.end}&step=${data.step}&names=${names}`);
+  return response.ok ? response.json() : {};
+}
+async function toggleChannel(full, on) {
+  state.chosen = on ? [...state.chosen, full] : state.chosen.filter(n => n !== full);
+  saveChosen();
+  rebuildExtra();
+  if (state.data && !state.live) {
+    state.data.extraSrc = {series: await fetchChannels(state.data)};
+    drawAll();
+  }
+}
+function initHistory() {
+  const lists = state.index.channels;
+  state.ptab = Object.keys(lists)[0] || null;
+  const known = n => { const [k, name] = n.split("|"); return lists[k] && lists[k].names.includes(name); };
+  state.chosen = loadChosen().filter(known);
+  drawTabs();
+  rebuildExtra();
+  $("dateBtn").onclick = e => { e.stopPropagation(); $("cal").hidden ? openCalendar() : closeCalendar(); };
+  $("cal").addEventListener("click", e => e.stopPropagation());
+  document.addEventListener("click", closeCalendar);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeCalendar(); });
+  $("prevDay").onclick = () => moveDay(-1);
+  $("nextDay").onclick = () => moveDay(1);
+  $("latestDay").onclick = () => { const d = observedDays().slice(-1)[0]; if (d) openDay(d); };
+  $("clearChannels").onclick = () => { state.chosen = []; saveChosen(); rebuildExtra(); drawTabs(); drawAll(); };
+}
+/* ---------- 整合面板 ---------- */
+const ICON = {ok: "● 正常", watch: "▲ 注意", problem: "✕ 有問題", na: "– 無法判斷"};
+const LANE_COLOR = {data: "--s1", cloud: "--lv3", watch: "--warn", problem: "--bad"};
+function issueRow(c) {
+  const li = document.createElement("li"), mark = document.createElement("span"), name = document.createElement("b");
+  mark.className = c.status; mark.textContent = ICON[c.status] + " ";
+  name.textContent = c.title + ":";
+  li.append(mark, name, ` ${c.value}。${c.detail}`);
+  return li;
+}
+function drawChecks(diag) {
+  const counts = diag.summary, parts = [];
+  if (counts.problem) parts.push(`${counts.problem} 項有問題`);
+  if (counts.watch) parts.push(`${counts.watch} 項要注意`);
+  $("verdict").textContent = `儀器和資料檢查:${parts.length ? parts.join("、") : "沒有發現異常"}`;
+  const important = diag.checks.filter(c => c.status === "problem" || c.status === "watch").sort((a, b) => (a.status === "problem" ? 0 : 1) - (b.status === "problem" ? 0 : 1));
+  $("issues").replaceChildren(...important.map(issueRow));
+  $("okList").replaceChildren(...diag.checks.filter(c => c.status === "ok" || c.status === "na").map(issueRow));
+  if (counts.problem) $("checksBox").open = true;
+}
+function drawStory(story) {
+  $("storyHead").textContent = story.headline;
+  const time = $("storyTime");
+  time.replaceChildren(...story.timeline.map(item => {
+    const li = document.createElement("li"), when = document.createElement("span"), text = document.createElement("span");
+    when.className = "when"; when.textContent = `${item.from}–${item.to}`;
+    text.textContent = item.text;
+    li.append(when, text);
+    return li;
+  }));
+  const body = $("storyBody");
+  body.replaceChildren(...story.sections.map(section => {
+    const box = document.createElement("div"), title = document.createElement("h3");
+    title.textContent = section.title;
+    box.append(title);
+    for (const line of section.lines) { const p = document.createElement("p"); p.textContent = line; box.append(p); }
+    for (const day of section.days || []) {
+      const b = document.createElement("button");
+      b.textContent = day;
+      b.onclick = () => openDay(day);
+      box.append(b);
+    }
+    return box;
+  }));
+  const label = {good: "● 可以用", care: "▲ 小心用", bad: "✕ 先別用"};
+  $("storyTrust").replaceChildren(...story.trust.map(item => {
+    const li = document.createElement("li"), mark = document.createElement("span"), what = document.createElement("b");
+    mark.className = item.level; mark.textContent = label[item.level] + " ";
+    what.textContent = item.what + ":";
+    li.append(mark, what, item.why);
+    return li;
+  }));
+}
+function drawManual(diag) {
+  const m = diag.manual, body = $("manual").tBodies[0];
+  body.replaceChildren();
+  if (!m || !m.rows.length) { $("manualLead").textContent = "這段時間沒有資料。"; $("manualBrief").textContent = " 沒有資料"; return; }
+  const brief = m.rows.slice(0, 5).map(row => `${row.label.replace("LWC-300 ", "LWC ")} ${row.value}`).join(" · ");
+  $("manualBrief").textContent = ` ${brief}` + (m.flagged.length ? `(▲ 要確認:${m.flagged.join("、")})` : "") + ",點開看影響";
+  $("manualLead").textContent = "PADS 沒有接風速、壓力或溫度感測器,下面這些是記錄前輸入的。輸入值不準時,CDP 濃度、LWC 和 LWC-300 都會跟著偏,而且資料本身看不出來。" + (m.flagged.length ? `這段時間要先確認:${m.flagged.join("、")}。` : "");
+  for (const row of m.rows) {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = row.label;
+    tr.insertCell().textContent = row.value;
+    tr.insertCell().textContent = row.effect;
+    const note = tr.insertCell();
+    note.textContent = (row.status === "watch" ? "▲ " : "") + row.note;
+    if (row.status === "watch") note.className = "flag";
+  }
+}
+function drawLanes(diag) {
+  const canvas = $("lanes"), rowH = 19, left = 138, right = 10, H = diag.lanes.length * rowH + 22;
+  const {c, width} = setup(canvas, H);
+  const span = diag.minutes, x = m => left + m / span * (width - left - right);
+  diag.lanes.forEach((lane, i) => {
+    const y = i * rowH;
+    c.fillStyle = css("--text"); c.textAlign = "right"; c.fillText(lane.label, left - 8, y + 14);
+    c.fillStyle = css("--empty"); c.fillRect(left, y + 3, width - left - right, rowH - 6);
+    c.fillStyle = css(LANE_COLOR[lane.kind]);
+    for (const [a, b] of lane.runs) c.fillRect(x(a), y + 3, Math.max(x(b) - x(a), 1.5), rowH - 6);
+  });
+  c.fillStyle = css("--muted"); c.textAlign = "center";
+  const steps = [600, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800, 2592000];
+  const total = span * 60, step = steps.find(s => total / s <= Math.max(3, (width - left) / 90)) || 2592000;
+  const y = diag.lanes.length * rowH + 14;
+  for (let t = Math.ceil(diag.start / step) * step; t < diag.end; t += step) c.fillText(total > 172800 ? stamp(t).slice(5, 10) : stamp(t).slice(5), x((t - diag.start) / 60), y);
+  canvas.onmousemove = e => {
+    const px = localX(e, canvas);
+    if (px < left) return;
+    const minute = Math.floor((px - left) / (width - left - right) * span);
+    const active = diag.lanes.filter(l => l.runs.some(([a, b]) => minute >= a && minute < b)).map(l => l.label);
+    $("laneCaption").textContent = `${stamp(diag.start + minute * 60)}:${active.join("、") || "沒有資料"}`;
+  };
+}
+function drawDistribution(box, d) {
+  const card = document.createElement("div"), canvas = document.createElement("canvas"), cap = document.createElement("div");
+  const title = document.createElement("div");
+  title.style.fontWeight = "600"; title.style.fontSize = "13px";
+  title.textContent = `${d.label} ${d.unit}`;
+  cap.className = "dcaption";
+  card.append(title, canvas, cap);
+  box.append(card);
+  const H = 150, {c, width} = setup(canvas, H), L = 6, R = 6, T = 6, B = H - 20;
+  const scale = d.log ? v => Math.log10(v) : v => v;
+  const x0 = scale(d.edges[0]), x1 = scale(d.edges[d.edges.length - 1]);
+  const x = v => L + (scale(v) - x0) / (x1 - x0) * (width - L - R);
+  const top = Math.max(...d.today, ...d.reference, 0.01), y = v => B - v / top * (B - T);
+  c.strokeStyle = css("--axis"); c.beginPath(); c.moveTo(L, B + .5); c.lineTo(width - R, B + .5); c.stroke();
+  c.fillStyle = css("--s1");
+  d.today.forEach((v, i) => { if (v > 0) { const a = x(d.edges[i]), b = x(d.edges[i + 1]); c.fillRect(a + .5, y(v), Math.max(b - a - 1, 1), B - y(v)); } });
+  c.strokeStyle = css("--s2"); c.lineWidth = 1.8; c.beginPath();
+  d.reference.forEach((v, i) => { const a = x(d.edges[i]), b = x(d.edges[i + 1]); if (i === 0) c.moveTo(a, y(v)); else c.lineTo(a, y(v)); c.lineTo(b, y(v)); });
+  c.stroke();
+  c.fillStyle = css("--muted"); c.lineWidth = 1;
+  const candidates = d.log ? [0.1, 1, 10, 100, 1000, 0.01, 0.1, 1] : [5, 10, 15, 20, 25, 30, 35, 40];
+  c.textAlign = "center";
+  for (const t of new Set(candidates)) if (t >= d.edges[0] && t <= d.edges[d.edges.length - 1]) c.fillText(String(t), x(t), B + 14);
+  if (d.median === null) cap.textContent = "這段時間沒有資料。";
+  else {
+    const rank = d.rank === null ? "" : `,過去第 ${Math.round(d.rank)} 百分位`;
+    cap.innerHTML = "";
+    const strong = document.createElement("b");
+    strong.textContent = `中位數 ${fmt(d.median)}`;
+    cap.append(strong, `${rank}(過去中位數 ${fmt(d.reference_median)},${d.minutes.toLocaleString("en-US")} 分鐘)`);
+  }
+}
+function drawScatter(box, title, xLabel, yLabel, p, options) {
+  const card = document.createElement("div"), canvas = document.createElement("canvas"), cap = document.createElement("div"), head = document.createElement("div");
+  head.style.fontWeight = "600"; head.style.fontSize = "13px"; head.textContent = title;
+  cap.className = "dcaption";
+  card.append(head, canvas, cap);
+  box.append(card);
+  const H = 170, {c, width} = setup(canvas, H), L = 44, R = 8, T = 6, B = H - 30;
+  const base = () => `${options.note || ""}${p.r === null ? "" : `相關 r = ${p.r.toFixed(2)},`}${p.n.toLocaleString("en-US")} 分鐘`;
+  cap.textContent = p.n ? base() : "沒有足夠的同時資料。";
+  if (!p.n) { c.fillStyle = css("--empty"); c.fillRect(L, T, width - L - R, B - T); return; }
+  const q = (v, f) => { const s = v.slice().sort((a, b) => a - b); return s[Math.floor((s.length - 1) * f)]; };
+  let x0 = Math.min(0, q(p.x, .005)), x1 = q(p.x, .995), y0 = Math.min(0, q(p.y, .005)), y1 = q(p.y, .995);
+  if (options.equal) { x0 = y0 = Math.min(x0, y0); x1 = y1 = Math.max(x1, y1); }
+  x1 = x1 > x0 ? x1 * 1.05 : x0 + 1; y1 = y1 > y0 ? y1 * 1.05 : y0 + 1;
+  const X = v => L + (v - x0) / (x1 - x0) * (width - L - R), Y = v => B - (v - y0) / (y1 - y0) * (B - T);
+  c.strokeStyle = css("--line"); c.fillStyle = css("--muted"); c.lineWidth = 1;
+  c.textAlign = "right";
+  for (const t of niceTicks(y0, y1, 3)) { c.beginPath(); c.moveTo(L, Y(t)); c.lineTo(width - R, Y(t)); c.stroke(); c.fillText(fmt(t), L - 5, Y(t) + 4); }
+  c.textAlign = "center";
+  for (const t of niceTicks(x0, x1, 4)) c.fillText(fmt(t), X(t), B + 13);
+  c.fillText(xLabel, (L + width - R) / 2, H - 3);
+  c.save(); c.translate(10, (T + B) / 2); c.rotate(-Math.PI / 2); c.fillText(yLabel, 0, 0); c.restore();
+  if (options.equal) {
+    c.strokeStyle = css("--axis"); c.setLineDash([4, 3]); c.beginPath(); c.moveTo(X(x0), Y(y0)); c.lineTo(X(x1), Y(y1)); c.stroke(); c.setLineDash([]);
+  }
+  c.save(); c.beginPath(); c.rect(L, T, width - L - R, B - T); c.clip();
+  c.fillStyle = css("--s1"); c.globalAlpha = .45;
+  p.x.forEach((v, i) => { c.beginPath(); c.arc(X(v), Y(p.y[i]), 2.2, 0, 7); c.fill(); });
+  c.restore();
+  canvas.onmousemove = e => {
+    const px = localX(e, canvas), rect = canvas.getBoundingClientRect(), py = e.clientY - rect.top;
+    let best = -1, distance = 196;
+    p.x.forEach((v, i) => { const dx = X(v) - px, dy = Y(p.y[i]) - py, d2 = dx * dx + dy * dy; if (d2 < distance) { distance = d2; best = i; } });
+    cap.textContent = best < 0 ? base() : `${stamp(p.t[best])}:${xLabel} ${fmt(p.x[best])},${yLabel} ${fmt(p.y[best])}`;
+  };
+  canvas.onmouseleave = () => { cap.textContent = base(); };
+}
+async function loadDiagnosis(start, end) {
+  const token = state.token;
+  try {
+    const response = await fetch(`/api/diagnose?start=${start}&end=${end}`);
+    if (!response.ok || token !== state.token) return;
+    const diag = await response.json();
+    if (token !== state.token) return;
+    state.diag = diag;
+    drawDiagnosis();
+  } catch (error) { $("verdict").textContent = "整合面板載入失敗"; }
+}
+function drawDiagnosis() {
+  const diag = state.diag;
+  if (!diag || state.live) return;
+  drawChecks(diag);
+  drawManual(diag);
+  drawStory(diag.story);
+  if (state.data) drawAll();
+  if (!$("moreAnalysis").open) return;
+  drawLanes(diag);
+  const dists = $("dists");
+  dists.replaceChildren();
+  for (const d of diag.distributions) drawDistribution(dists, d);
+  const scatters = $("scatters");
+  scatters.replaceChildren();
+  drawScatter(scatters, "CDP LWC 對 LWC-300", "CDP g/m³", "LWC-300", diag.scatter.lwc, {equal: true, note: "虛線是 1:1。"});
+  drawScatter(scatters, "濃度對 MVD", "濃度 #/cm³", "MVD µm", diag.scatter.micro, {note: ""});
+  drawScatter(scatters, "雲中氣膠對雲滴", "PM2.5 µg/m³", "濃度", diag.scatter.aerosol, {note: ""});
+}
+function ageText(s) {
+  if (s === null || s === undefined) return "";
+  if (s < 90) return Math.round(s) + " 秒前";
+  if (s < 5400) return Math.round(s / 60) + " 分鐘前";
+  return (s / 3600).toFixed(1) + " 小時前";
+}
+const STATE_ICON = {ok: "●", stale: "▲", error: "▲", missing: "○", waiting: "○"};
+function drawStatus(status) {
+  const bar = $("statusbar");
+  bar.hidden = false;
+  bar.innerHTML = status.instruments.map(i => `<span class="chip ${i.code}" title="${i.files} 個檔案${i.bad_lines ? "、" + i.bad_lines + " 行無法解析" : ""}"><b>${i.label}</b><span class="m">${STATE_ICON[i.code] || ""} ${i.text}</span><span class="sub">${ageText(i.age)}</span></span>`).join("") + `<span class="sub">只讀取資料,不控制儀器</span>`;
+  $("notices").innerHTML = status.notices.map(n => `<li>▲ ${n}</li>`).join("");
+}
+async function pollLive() {
+  const token = ++state.token, span = $("span").value;
+  const width = Math.max(100, Math.floor($("panels").clientWidth - LEFT - RIGHT - 20));
+  try {
+    const response = await fetch(`/api/live?span=${span}&width=${width}`);
+    const data = await response.json();
+    if (token !== state.token || !state.live) return;
+    const keep = state.hover;
+    state.data = data;
+    state.hover = keep !== null && keep < data.count ? keep : null;
+    $("status").textContent = `每格 ${data.step >= 60 ? (data.step / 60).toFixed(1).replace(".0", "") + " 分鐘" : data.step + " 秒"} · 更新於 ${stamp(data.status.now, true).slice(11)}`;
+    drawStatus(data.status);
+    drawAll();
+  } catch (error) {
+    if (state.live) { $("status").textContent = "無法連到面板程式,請確認它還開著"; $("statusbar").innerHTML = ""; }
+  }
+}
+const folders = {pads: new Map(), d11: new Map(), timer: null};
+function folderRow(kind, item) {
+  const label = document.createElement("label");
+  label.className = "found";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = item.checked;
+  box.addEventListener("change", () => { item.checked = box.checked; });
+  const text = document.createElement("span");
+  const path = document.createElement("span");
+  path.className = "p";
+  path.textContent = item.path;
+  const info = document.createElement("span");
+  info.className = "sub";
+  const parts = [];
+  if (item.kinds && item.kinds.length) parts.push(item.kinds.join("、"));
+  if (item.files) parts.push(item.files + " 個檔案");
+  if (item.latest) parts.push("最新 " + new Date(item.latest * 1000).toLocaleString("zh-TW", {hour12: false}));
+  if (!parts.length) parts.push(item.current ? "目前使用中" : "手動輸入");
+  info.textContent = parts.join(" · ");
+  text.append(path, info);
+  label.append(box, text);
+  return label;
+}
+function drawFolders() {
+  for (const kind of ["pads", "d11"]) {
+    const box = $(kind + "List");
+    box.replaceChildren();
+    const items = [...folders[kind].values()].sort((a, b) => (b.latest || 0) - (a.latest || 0));
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "sub";
+      empty.textContent = "尚未找到";
+      box.append(empty);
+    }
+    for (const item of items) box.append(folderRow(kind, item));
+  }
+}
+function mergeFound(kind, found) {
+  for (const f of found) {
+    const old = folders[kind].get(f.path.toLowerCase());
+    folders[kind].set(f.path.toLowerCase(), {...f, checked: old ? old.checked : false, current: old && old.current});
+  }
+}
+async function pollSearch() {
+  const state_ = await (await fetch("/api/locate")).json();
+  const s = state_.search;
+  if (!s) return;
+  mergeFound("pads", s.pads);
+  mergeFound("d11", s.d11);
+  $("searchStatus").textContent = s.running
+    ? `尋找中:已看 ${s.scanned.toLocaleString("en-US")} 個資料夾 · ${s.current}`
+    : `${s.cancelled ? "已停止" : "完成"}:看了 ${s.scanned.toLocaleString("en-US")} 個資料夾,${Math.round(s.elapsed)} 秒(${s.drives.join("、")})`;
+  $("searchBtn").hidden = s.running;
+  $("cancelBtn").hidden = !s.running;
+  if (!s.running) { clearInterval(folders.timer); folders.timer = null; autoCheck(); }
+  drawFolders();
+}
+function autoCheck() {
+  // 沒有設定時,預先勾選檔案最新的一個,仍由使用者確認
+  for (const kind of ["pads", "d11"]) {
+    const items = [...folders[kind].values()];
+    if (items.length && !items.some(i => i.checked)) items.sort((a, b) => (b.latest || 0) - (a.latest || 0))[0].checked = true;
+  }
+}
+async function post(path, body) {
+  return fetch(path, {method: "POST", headers: {"X-Panel": "1", "Content-Type": "application/json"}, body: body ? JSON.stringify(body) : "{}"});
+}
+async function openSetup() {
+  const current = await (await fetch("/api/locate")).json();
+  folders.pads.clear(); folders.d11.clear();
+  for (const [kind, list] of [["pads", current.pads_roots], ["d11", current.d11_roots]])
+    for (const path of list) folders[kind].set(path.toLowerCase(), {path, checked: true, current: true});
+  $("configPath").textContent = "設定會存到:" + current.config_path;
+  $("cloudFolder").value = current.cloud_folder || "";
+  $("siteName").value = current.site_name || "";
+  $("discordHook").value = "";
+  $("discordHook").placeholder = current.has_webhook ? "已設定(留空表示不變)" : "貼上 Webhook 網址";
+  $("setupError").hidden = true;
+  $("searchStatus").textContent = "";
+  const busy = state.data && state.data.status && state.data.status.instruments.some(i => i.code === "ok");
+  $("busyNote").hidden = !busy;
+  if (current.search) await pollSearch();
+  drawFolders();
+  $("setup").showModal();
+}
+function addManual(kind) {
+  const input = $(kind + "Manual"), path = input.value.trim().replace(/^"|"$/g, "");
+  if (!path) return;
+  folders[kind].set(path.toLowerCase(), {path, checked: true});
+  input.value = "";
+  drawFolders();
+}
+async function saveRemote() {
+  const hook = $("discordHook").value.trim();
+  const response = await post("/api/locate/remote", {cloud_folder: $("cloudFolder").value.trim().replace(/^"|"$/g, ""), site_name: $("siteName").value, discord_webhook: hook || null});
+  const result = await response.json();
+  if (!result.ok) { $("setupError").textContent = "▲ " + result.errors.join(";"); $("setupError").hidden = false; return false; }
+  $("setupError").hidden = true;
+  return true;
+}
+function initSetup() {
+  $("testDiscord").addEventListener("click", async () => {
+    if (!(await saveRemote())) return;
+    const result = await (await post("/api/locate/test_discord")).json();
+    $("remoteHint").textContent = result.ok ? "● 測試訊息已送出,請到 Discord 頻道確認。" : "▲ " + result.errors.join(";");
+  });
+  $("setupBtn").hidden = false;
+  $("setupBtn").addEventListener("click", openSetup);
+  $("closeSetup").addEventListener("click", () => $("setup").close());
+  $("searchBtn").addEventListener("click", async () => {
+    await post("/api/locate/start");
+    $("searchBtn").hidden = true;
+    $("cancelBtn").hidden = false;
+    folders.timer = setInterval(pollSearch, 1000);
+  });
+  $("cancelBtn").addEventListener("click", () => post("/api/locate/cancel"));
+  document.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => addManual(b.dataset.add)));
+  $("applySetup").addEventListener("click", async () => {
+    const chosen = kind => [...folders[kind].values()].filter(i => i.checked).map(i => i.path);
+    const response = await post("/api/locate/apply", {pads_roots: chosen("pads"), d11_roots: chosen("d11")});
+    const result = await response.json();
+    if (!result.ok) { $("setupError").textContent = "▲ " + result.errors.join(";"); $("setupError").hidden = false; return; }
+    if (!(await saveRemote())) return;
+    $("setup").close();
+    setTimeout(pollLive, 500);
+    setTimeout(pollLive, 3000);
+  });
+}
+function setHistoryOnly() {
+  $("params").hidden = false;
+  $("moreAnalysis").hidden = false;
+  $("diag").hidden = false;
+}
+function setMode(live) {
+  state.live = live;
+  clearInterval(state.timer);
+  state.hover = null;
+  $("liveBtn").classList.toggle("on", live);
+  $("historyBtn").classList.toggle("on", !live);
+  $("spanBox").hidden = !live;
+  $("historyTools").style.display = live ? "none" : "contents";
+  $("params").hidden = live || !state.index.history;
+  $("moreAnalysis").hidden = live || !state.index.history;
+  $("diag").hidden = live;
+  $("daySummary").hidden = live;
+  $("extraPanels").hidden = live;
+  if (live) {
+    pollLive();
+    state.timer = setInterval(pollLive, 5000);
+  } else {
+    $("statusbar").hidden = true;
+    $("notices").innerHTML = "";
+    const days = observedDays();
+    const start = state.index.default.start;
+    if (days.length) openDay(stamp(state.index.default.end - 60).slice(0, 10));
+    else load(start, state.index.default.end);
+  }
+}
+function navigate(start, end) {
+  if (state.data) state.history.push([state.data.start, state.data.end]);
+  load(start, end);
+}
+function goBack() { if (state.live) return; const last = state.history.pop(); if (last) load(last[0], last[1]); }
+function shift(sign) { const d = state.data; if (d) { const span = d.end - d.start; navigate(d.start + sign * span, d.end + sign * span); } }
+async function init() {
+  buildPanels();
+  const response = await fetch("/api/index");
+  state.index = await response.json();
+  for (const c of state.index.campaigns) {
+    const o = document.createElement("option");
+    o.value = c.name; o.textContent = `${c.name}(CDP ${c.cdp}、11-D ${c.d11})`;
+    $("campaign").appendChild(o);
+  }
+  $("campaign").addEventListener("change", e => {
+    const c = state.index.campaigns.find(k => k.name === e.target.value);
+    if (c) navigate(Math.floor(c.start / 60) * 60, Math.ceil(c.end / 60) * 60);
+  });
+  $("prev").addEventListener("click", () => shift(-1));
+  $("next").addEventListener("click", () => shift(1));
+  $("back").addEventListener("click", goBack);
+  $("out").textContent = "放大範圍 ×2";
+  $("out").addEventListener("click", () => { const d = state.data; if (d) { const span = d.end - d.start; navigate(d.start - Math.round(span / 2 / 60) * 60, d.end + Math.round(span / 2 / 60) * 60); } });
+  for (const id of ["start", "end"]) $(id).addEventListener("change", () => {
+    const a = fromInput($("start").value), b = fromInput($("end").value);
+    if (isFinite(a) && isFinite(b) && b > a) navigate(a, b);
+  });
+  window.addEventListener("resize", () => { if (state.live) pollLive(); else if (state.data) load(state.data.start, state.data.end); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawAll(); drawDiagnosis(); });
+  $("span").addEventListener("change", pollLive);
+  $("liveBtn").addEventListener("click", () => setMode(true));
+  $("historyBtn").addEventListener("click", () => setMode(false));
+  $("modes").hidden = !(state.index.live && state.index.history);
+  $("moreSize").hidden = false;
+  $("moreSize").addEventListener("toggle", drawAll);
+  $("moreAnalysis").addEventListener("toggle", drawDiagnosis);
+  if (state.index.history) initHistory();
+  if (state.index.locate) {
+    initSetup();
+    const current = await (await fetch("/api/locate")).json();
+    if (!current.pads_roots.length && !current.d11_roots.length) setTimeout(openSetup, 300);
+  }
+  if (state.index.live) setMode(true);
+  else {
+    setHistoryOnly();
+    const days = observedDays();
+    if (days.length) openDay(stamp(state.index.default.end - 60).slice(0, 10));
+    else await load(state.index.default.start, state.index.default.end);
+  }
+}
+init();
+</script>
+</body>
+</html>
