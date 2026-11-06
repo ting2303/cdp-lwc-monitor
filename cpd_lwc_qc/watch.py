@@ -50,6 +50,59 @@ ADVICE = {
 }
 
 
+# 面板的燈號分類
+LIGHTS = [("cdp", "CDP"), ("lwc", "LWC-300"), ("d11", "11-D"), ("power", "電力和電腦"), ("upload", "上傳"), ("optics", "儀器狀態"), ("env", "背景環境"), ("manual", "手動值"), ("time", "時間")]
+_LEVEL_COLOR = {"error": "red", "warn": "yellow", "info": "blue"}
+_COLOR_RANK = {"green": 0, "blue": 1, "yellow": 2, "red": 3}
+_INSTRUMENT = {"CDP": "cdp", "LWC-300": "lwc", "11-D": "d11"}
+
+
+def categories_of(alert: dict) -> List[str]:
+    key = alert["key"]
+    head, _, tail = key.partition(":")
+    if head in ("stale", "missing", "read"):
+        return [_INSTRUMENT.get(tail, "cdp")]
+    if head == "setup":
+        names = []
+        if "PADS" in alert["title"]:
+            names += ["cdp", "lwc"]
+        if "11-D" in alert["title"]:
+            names.append("d11")
+        return names or ["cdp"]
+    if head == "log_errors":
+        return ["cdp", "lwc"]
+    if head in ("on_battery", "reboot", "disk"):
+        return ["power"]
+    if head.startswith(("drive", "backup")):
+        return ["upload"]
+    if head in ("fog", "env_laser", "env_temp"):
+        return ["optics"]
+    if head.startswith("env_"):
+        return ["env"]
+    if head.startswith("manual_"):
+        return ["manual"]
+    if head in ("clock", "d11_internal"):
+        return ["time"]
+    return ["power"]
+
+
+def board_for(alerts: List[dict], active: Dict[str, str], events: List[dict]) -> dict:
+    """面板上的紅黃綠燈。info 只是提示,不會讓總燈變黃。"""
+    lights = {key: {"id": key, "label": label, "color": "green", "titles": []} for key, label in LIGHTS}
+    cards = []
+    for alert in alerts:
+        color = _LEVEL_COLOR.get(alert["level"], "yellow")
+        for name in categories_of(alert):
+            light = lights[name]
+            light["titles"].append(alert["title"])
+            if _COLOR_RANK[color] > _COLOR_RANK[light["color"]]:
+                light["color"] = color
+        cards.append({**alert, "color": color, "since": active.get(alert["key"], "")})
+    cards.sort(key=lambda c: -_COLOR_RANK[c["color"]])
+    worst = max((_COLOR_RANK[c["color"]] for c in cards), default=0)
+    return {"overall": {3: "red", 2: "yellow"}.get(worst, "green"), "lights": list(lights.values()), "alerts": cards, "events": events}
+
+
 def advice_for(alert: dict) -> List[str]:
     key = alert["key"]
     if key.startswith("env_temp"):
@@ -168,6 +221,7 @@ class Watcher:
         self.config = config
         self.normal = normal
         self.console_shown: dict = {}
+        self.recent_events: List[dict] = []
         self.power, self.boot, self.processes, self.clock = power, boot, processes, clock
         self.state_path = Path(config.get("state_file", "watch_state.json"))
         self.fog_seconds = float(config.get("fog_seconds", 300))
@@ -262,7 +316,7 @@ class Watcher:
 
         unset = [name for name, roots in (("PADS", self.config.get("pads_roots")), ("11-D", self.config.get("d11_roots"))) if not roots]
         if unset:
-            add("setup", "info", f"還沒設定 {'、'.join(unset)} 資料夾", "設定之前不會讀取這些資料,也不會上傳。", "在面板按「設定資料夾」。")
+            add("setup", "warn", f"還沒設定 {'、'.join(unset)} 資料夾", "設定之前不會讀取這些資料,也不會上傳。", "在面板按「設定資料夾」。")
 
         pads_running = None if running is None else PADS_PROCESS in running
         for instrument in status["instruments"]:
@@ -397,6 +451,10 @@ class Watcher:
         self.notifier.flush()
         self._save_state()
         self.last_alerts = alerts
+        for row in events:
+            self.recent_events.insert(0, {"time": row[0], "kind": row[1], "level": row[2], "title": row[3]})
+        del self.recent_events[40:]
+        self.feed.board = board_for(alerts, active, self.recent_events)
         self.feed.external_notices = [f"{a['title']}:{a['detail']}" for a in alerts if not a["key"].startswith(("stale", "missing"))]
         if self.status_dir is not None:
             self._write_status(alerts, active, stamp, events)

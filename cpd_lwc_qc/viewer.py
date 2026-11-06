@@ -256,7 +256,7 @@ class Store:
         }
 
 
-def make_handler(store: Store, feed=None, locator=None):
+def make_handler(store: Store, feed=None, locator=None, demo=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args) -> None:
             pass
@@ -279,14 +279,33 @@ def make_handler(store: Store, feed=None, locator=None):
 
         def do_POST(self) -> None:
             url = urlparse(self.path)
-            if locator is None or not url.path.startswith("/api/locate"):
+            is_demo = demo is not None and url.path == "/api/demo"
+            if not is_demo and (locator is None or not url.path.startswith("/api/locate")):
                 self._json({"error": "not found"}, 404)
                 return
             # 自訂標頭會讓跨網站請求被瀏覽器擋下
             if not self._local_request() or self.headers.get("X-Panel") != "1":
                 self._json({"error": "只接受面板本身的操作"}, 403)
                 return
-            if url.path == "/api/locate/start":
+            if is_demo:
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length > 4096:
+                        raise ValueError("內容太大")
+                    body = json.loads(self.rfile.read(length).decode("utf-8"))
+                    if "auto" in body:
+                        demo.set_auto(bool(body["auto"]))
+                    else:
+                        scenario = body.get("id")
+                        if scenario not in demo.BY_ID_NAMES:
+                            raise ValueError("沒有這個情境")
+                        demo.auto = False
+                        demo.apply(scenario)
+                except (ValueError, AttributeError) as error:
+                    self._json({"ok": False, "errors": [str(error)]}, 400)
+                    return
+                self._json(demo.describe())
+            elif url.path == "/api/locate/start":
                 locator.start()
                 self._json({"ok": True})
             elif url.path == "/api/locate/cancel":
@@ -336,10 +355,16 @@ def make_handler(store: Store, feed=None, locator=None):
                 index = store.index()
                 index["live"] = feed is not None
                 index["locate"] = locator is not None
+                index["demo"] = demo is not None
                 self._json(index)
+            elif url.path == "/api/demo" and demo is not None:
+                self._json(demo.describe())
             elif url.path == "/api/live":
                 if feed is None:
                     self._json({"error": "沒有啟用即時模式"}, 404)
+                    return
+                if demo is not None and demo.frozen():  # 模擬筆電整台斷電:面板連不上
+                    self._json({"error": "模擬:筆電斷電"}, 503)
                     return
                 query = parse_qs(url.query)
                 try:

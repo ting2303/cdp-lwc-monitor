@@ -26,6 +26,15 @@ python -m venv venv && venv/Scripts/pip install numpy pyinstaller
 venv/Scripts/python tools/build_exe.py build_tmp dist
 ```
 
+## 模擬各種狀況
+
+```bash
+python panel.py --demo
+```
+
+用假資料走完整的讀檔和判斷流程,可以點選 35 種情境,看燈號和通知。不碰真實資料,不上傳,不傳 Discord。
+`tests/test_demo.py` 會檢查每個情境的燈號,以及每種通知都有對應的情境。
+
 ## 即時面板(EXE)
 
 `dist_v2/CDP_LWC_11D_Panel/` 整個資料夾複製到觀測電腦即可使用,不必安裝 Python,操作見裡面的 `使用說明.txt`。旁邊放 `cache` 資料夾時,也能在面板切到歷史瀏覽。

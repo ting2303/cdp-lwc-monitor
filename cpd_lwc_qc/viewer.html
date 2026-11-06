@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CDP LWC 11-D 資料瀏覽</title>
 <style>
-:root{color-scheme:light;--bg:#f6f6f3;--card:#fcfcfb;--text:#0b0b0b;--muted:#52514e;--line:#e4e3de;--axis:#b9b8b1;
+:root{--head:58px;color-scheme:light;--bg:#f6f6f3;--card:#fcfcfb;--text:#0b0b0b;--muted:#52514e;--line:#e4e3de;--axis:#b9b8b1;
 --s1:#2a78d6;--s2:#eb6834;--band1:#2a78d62e;--band2:#eb683429;--cursor:#0b0b0b;--ramp0:#e8f1fb;--ramp1:#0b3f80;--empty:#f0efea;--good:#0b6b3a;--warn:#8a5a00;--bad:#b3261e;
 --lv1:#dceafb;--lv2:#b1d0f5;--lv3:#73a9ea;--lv4:#2f77d2;--lv5:#154f9c;--lt1:#0b0b0b;--lt2:#0b0b0b;--lt3:#0b0b0b;--lt4:#fff;--lt5:#fff}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#141413;--card:#1a1a19;--text:#f0efec;--muted:#c3c2b7;--line:#30302d;--axis:#55544f;
@@ -19,7 +19,40 @@ h1{font-size:16px;margin:0 8px 0 0}
 label{color:var(--muted);font-size:13px;display:inline-flex;gap:5px;align-items:center}
 select,input,button{font:inherit;padding:5px 8px;color:var(--text);background:var(--card);border:1px solid var(--axis);border-radius:6px;min-height:32px}
 button{cursor:pointer}button:hover{background:var(--line)}
-main{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:12px;padding:12px 16px 32px;align-items:start}
+main{display:grid;grid-template-columns:420px minmax(0,1fr) 340px;gap:12px;padding:12px 16px 32px;align-items:start}
+main.live{grid-template-columns:310px minmax(0,1fr) 340px}
+#panels,#extraPanels,#sizePanels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}
+#board{display:grid;gap:10px;position:sticky;top:calc(var(--head) + 8px);max-height:calc(100vh - var(--head) - 48px);overflow:auto;min-width:0}
+main.live aside{max-height:calc(100vh - var(--head) - 48px);overflow:auto}
+.overall{display:flex;gap:12px;align-items:center;border-left-width:6px}
+.overall b{font-size:19px;display:block;line-height:1.25}
+.lamp{flex:none;width:44px;height:44px;border-radius:50%;background:var(--lamp);box-shadow:0 0 14px var(--lamp);display:grid;place-items:center;color:#fff;font-weight:800;font-size:20px}
+.c-green{--lamp:#2fa35f}.c-yellow{--lamp:#f2b705}.c-red{--lamp:#e5322b}.c-blue{--lamp:#3987e5}.c-gray{--lamp:#8a8a84}
+.c-yellow .lamp{color:#111}
+.overall.c-yellow,.overall.c-red,.overall.c-green,.overall.c-gray{border-left-color:var(--lamp)}
+.c-red.overall .lamp{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 26px 6px var(--lamp)}}
+@media (prefers-reduced-motion:reduce){.c-red.overall .lamp{animation:none}}
+.lights{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 8px;margin-top:6px}
+.light{display:grid;grid-template-columns:14px minmax(0,1fr);gap:0 6px;align-items:center;font-size:13px;padding:3px 4px;border-radius:6px;min-width:0}
+.light i{width:13px;height:13px;border-radius:50%;background:var(--lamp);box-shadow:0 0 5px var(--lamp)}
+.light b{font-weight:600}.light span{grid-column:2;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.light.c-red,.light.c-yellow{background:var(--line)}
+.alertcard{border:1px solid var(--line);border-left:5px solid var(--lamp);border-radius:6px;padding:6px 9px;margin-top:7px;font-size:13px}
+.alertcard b{display:block;font-size:13.5px}.alertcard p{margin:2px 0;font-size:12.5px;overflow-wrap:anywhere}
+.alertcard ol{margin:3px 0 0;padding-left:19px;font-size:12.5px}.alertcard .sub{font-size:11.5px}
+.eventlog{list-style:none;margin:4px 0 0;padding:0;font-size:12px;max-height:150px;overflow:auto}
+.eventlog li{padding:2px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.eventlog .t{color:var(--muted);font-variant-numeric:tabular-nums}
+.tools{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}.tools button{min-height:26px;padding:1px 7px;font-size:12px}
+#toasts{position:fixed;top:calc(var(--head) + 6px);left:50%;transform:translateX(-50%);z-index:30;display:grid;gap:7px;width:min(420px,92vw)}
+.toast{background:var(--card);border:1px solid var(--axis);border-left:6px solid var(--lamp);border-radius:7px;padding:8px 11px;font-size:13px;box-shadow:0 4px 16px #0005;cursor:pointer}
+.toast b{display:block}
+.demobanner{padding:6px 16px;background:#f2b705;color:#111;font-size:13px;font-weight:600}
+.scenes h3{font-size:12.5px;margin:8px 0 3px;color:var(--muted);font-weight:600}
+.scenes .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+.scene{min-height:27px;padding:2px 6px;font-size:12px;text-align:left;border-left:5px solid var(--lamp)}
+.scene.on{outline:2px solid var(--text);outline-offset:0;font-weight:700}
+#demoNow{font-size:12.5px;margin:4px 0 0;min-height:36px}
 .panels{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px 8px}
 .panel{position:relative;border-bottom:1px solid var(--line);padding:6px 0 2px}.panel:last-child{border-bottom:0}
 .panel h2{font-size:13px;font-weight:600;margin:0;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
@@ -28,7 +61,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:12px;padding:12p
 .key i{width:14px;height:3px;border-radius:2px;display:inline-block}
 canvas{display:block;width:100%;touch-action:none}
 canvas.plot{cursor:crosshair}
-aside{display:grid;gap:12px;position:sticky;top:66px}
+aside{display:grid;gap:12px;position:sticky;top:calc(var(--head) + 8px)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
 .card h2{font-size:14px;margin:0 0 2px}
 table{border-collapse:collapse;width:100%;font-size:13px}
@@ -79,7 +112,7 @@ button.primary{background:var(--s1);color:#fff;border-color:var(--s1)}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:1px 12px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
 .pgrid label{color:var(--text);font-size:12.5px;display:flex;gap:5px;align-items:center;min-height:24px}
 .pgrid input{min-height:auto}
-#diag{grid-column:1/-1;display:grid;gap:12px}
+#diag{display:grid;gap:12px;align-items:start;min-width:0;position:sticky;top:calc(var(--head) + 8px);max-height:calc(100vh - var(--head) - 48px);overflow:auto}
 .dcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
 .dcard h2{font-size:14px;margin:0 0 2px}
 .verdict{font-size:15px;font-weight:600;margin:0 0 8px}
@@ -128,7 +161,8 @@ details.dcard>summary{cursor:pointer;font-size:13.5px}
 .day .warn{position:absolute;left:3px;top:0;font-size:10px;line-height:13px;font-weight:700}
 button.on{background:var(--text);color:var(--card);border-color:var(--text)}
 .ramp{display:inline-block;width:70px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--ramp0),var(--ramp1));vertical-align:middle;margin:0 4px}
-@media (max-width:980px){main{grid-template-columns:minmax(0,1fr)}aside{position:static}}
+@media (max-width:1500px){main{grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto 1fr}main.live{grid-template-columns:290px minmax(0,1fr)}#board,#diag{grid-column:1;grid-row:1/span 2}.panels{grid-column:2;grid-row:1}aside,main.live aside{grid-column:2;grid-row:2;position:static;max-height:none;overflow:visible;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}}
+@media (max-width:980px){main,main.live{grid-template-columns:minmax(0,1fr);grid-template-rows:none}#board,#diag,.panels,aside,main.live aside{grid-column:auto;grid-row:auto}aside,#board,#diag{position:static;max-height:none}#panels,#extraPanels,#sizePanels{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -157,9 +191,18 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
   <span class="status" id="status"></span>
 </header>
 <div id="daySummary" hidden></div>
+<div class="demobanner" id="demoBanner" hidden></div>
 <div class="statusbar" id="statusbar" hidden aria-live="polite"></div>
 <ul class="notices" id="notices"></ul>
-<main>
+<div id="toasts" aria-live="assertive"></div>
+<main id="main">
+  <section id="board" hidden aria-label="燈號和通知">
+    <div class="card overall c-gray" id="overall"><span class="lamp" id="lamp">…</span><div><b id="overallText">檢查中</b><span class="sub" id="overallSub"></span></div></div>
+    <div class="card"><h2>各項狀態</h2><div class="lights" id="lights"></div></div>
+    <div class="card"><h2>目前問題和建議</h2><div id="alertList"></div></div>
+    <div class="card"><h2>通知紀錄</h2><ol class="eventlog" id="eventLog"></ol>
+      <div class="tools"><button id="soundBtn">聲音:關</button><button id="desktopBtn">桌面通知:關</button></div></div>
+  </section>
   <div id="diag" hidden>
     <section class="dcard story" aria-label="這天的故事">
       <p class="headline" id="storyHead"></p>
@@ -205,6 +248,12 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
     </details>
   </section>
   <aside>
+    <div class="card scenes" id="demoCard" hidden>
+      <h2>模擬情境</h2>
+      <div class="tools"><button id="demoAuto">自動輪播</button></div>
+      <p id="demoNow"></p>
+      <div id="demoList"></div>
+    </div>
     <div class="card">
       <h2 id="specTitle">粒徑分布</h2>
       <div class="sub" id="specSub">游標移到左圖可看該時間</div>
@@ -251,10 +300,10 @@ const state = {index: null, data: null, history: [], hover: null, drag: null, to
 const EXTRA = [];
 const MANUAL_TAG = "流速是手動值";
 const PANELS = [
-  {id: "number", title: "CDP 濃度", unit: "#/cm³", kind: "line", src: "cdp", series: [["number_cm3", "CDP", "--s1"]], h: 96, tag: MANUAL_TAG},
-  {id: "lwc", title: "液態水含量", unit: "g/m³", kind: "line", src: "cdp", series: [["lwc_gm3", "CDP", "--s1"], ["hotwire_gm3", "LWC-300", "--s2"]], h: 112, zero: true, robust: true, tag: "流速、壓力、溫度是手動值"},
-  {id: "mvd", title: "CDP MVD", unit: "µm", kind: "line", src: "cdp", series: [["mvd_um", "MVD", "--s1"]], h: 84},
-  {id: "d11heat", title: "11-D 粒徑分布", unit: "粒徑對數軸", kind: "heat", src: "d11", edges: "d11_edges", h: 170, axis: true, range: [-3, 3], always: true},
+  {id: "number", title: "CDP 濃度", unit: "#/cm³", kind: "line", src: "cdp", series: [["number_cm3", "CDP", "--s1"]], h: 150, tag: MANUAL_TAG},
+  {id: "lwc", title: "液態水含量", unit: "g/m³", kind: "line", src: "cdp", series: [["lwc_gm3", "CDP", "--s1"], ["hotwire_gm3", "LWC-300", "--s2"]], h: 150, zero: true, robust: true, tag: "流速、壓力、溫度是手動值"},
+  {id: "mvd", title: "CDP MVD", unit: "µm", kind: "line", src: "cdp", series: [["mvd_um", "MVD", "--s1"]], h: 150},
+  {id: "d11heat", title: "11-D 粒徑分布", unit: "粒徑對數軸", kind: "heat", src: "d11", edges: "d11_edges", h: 132, axis: true, range: [-3, 3], always: true},
 ];
 const SIZE_PANELS = [
   {id: "cdpheat", title: "CDP 粒徑分布", unit: "粒徑對數軸", kind: "heat", src: "cdp", edges: "cdp_edges", h: 150, range: [-2, 4]},
@@ -618,7 +667,7 @@ function drawAll() {
 async function load(start, end) {
   const token = ++state.token;
   $("status").textContent = "載入中…";
-  const width = Math.max(100, Math.floor($("panels").clientWidth - LEFT - RIGHT - 20));
+  const width = Math.max(100, Math.floor($("number").clientWidth - LEFT - RIGHT));
   const response = await fetch(`/api/window?start=${start}&end=${end}&width=${width}`);
   if (!response.ok) { $("status").textContent = "載入失敗"; return; }
   const data = await response.json();
@@ -1050,17 +1099,121 @@ function ageText(s) {
   return (s / 3600).toFixed(1) + " 小時前";
 }
 const STATE_ICON = {ok: "●", stale: "▲", error: "▲", missing: "○", waiting: "○"};
+const esc = s => String(s).replace(/[&<>"']/g, m => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[m]));
+const OVERALL = {green: ["●", "全部正常", "沒有需要處理的項目"], yellow: ["▲", "需要注意", "資料還在收,但有項目要確認"], red: ["✕", "需要處理", "資料可能正在流失或不可靠"], gray: ["…", "檢查中", ""]};
+const COLOR_WORD = {green: "正常", yellow: "注意", red: "處理", blue: "提示"};
+const INSTRUMENT_LIGHT = {cdp: "CDP", lwc: "LWC-300", d11: "11-D"};
+const alarm = {seen: null, sound: false, desktop: false};
+function setOverall(color, text, sub, lamp) {
+  $("overall").className = `card overall c-${color}`;
+  $("lamp").textContent = lamp;
+  $("overallText").textContent = text;
+  $("overallSub").textContent = sub;
+}
 function drawStatus(status) {
-  const bar = $("statusbar");
-  bar.hidden = false;
-  bar.innerHTML = status.instruments.map(i => `<span class="chip ${i.code}" title="${i.files} 個檔案${i.bad_lines ? "、" + i.bad_lines + " 行無法解析" : ""}"><b>${i.label}</b><span class="m">${STATE_ICON[i.code] || ""} ${i.text}</span><span class="sub">${ageText(i.age)}</span></span>`).join("") + `<span class="sub">只讀取資料,不控制儀器</span>`;
-  $("notices").innerHTML = status.notices.map(n => `<li>▲ ${n}</li>`).join("");
+  const board = status.board;
+  $("statusbar").hidden = true;
+  if (alarm.offline) { alarm.offline = false; notify("green", "面板恢復連線", ""); }
+  if (!board) {
+    setOverall("gray", ...OVERALL.gray.slice(1), OVERALL.gray[0]);
+    return;
+  }
+  const [lamp, text, lead] = OVERALL[board.overall];
+  const count = board.alerts.filter(a => a.color === "red" || a.color === "yellow").length;
+  setOverall(board.overall, text, count ? `${count} 個項目` : lead, lamp);
+  const ages = Object.fromEntries(status.instruments.map(i => [i.label, i]));
+  $("lights").innerHTML = board.lights.map(l => {
+    const item = ages[INSTRUMENT_LIGHT[l.id]];
+    const note = l.titles.length ? l.titles.length > 1 ? `${l.titles[0]} 等 ${l.titles.length} 項` : l.titles[0] : item ? `${item.text} ${ageText(item.age)}` : "正常";
+    return `<div class="light c-${l.color}" title="${esc(l.titles.join("、"))}"><i></i><b>${esc(l.label)} · ${COLOR_WORD[l.color]}</b><span>${esc(note)}</span></div>`;
+  }).join("");
+  $("alertList").innerHTML = board.alerts.length ? board.alerts.map(a => `<div class="alertcard c-${a.color}"><b>${esc(a.title)}</b><p>${esc(a.detail)}</p>${a.steps && a.steps.length ? `<ol>${a.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}<span class="sub">${a.since ? "從 " + esc(a.since.slice(5, 19)) + " 開始" : ""}</span></div>`).join("") : `<p class="sub">目前沒有問題。</p>`;
+  $("eventLog").innerHTML = board.events.length ? board.events.map(e => `<li><span class="t">${esc(e.time.slice(11))}</span> ${e.kind === "解除" ? "✓ 解除" : e.level === "error" ? "✕" : e.level === "warn" ? "▲" : "ℹ"} ${esc(e.title)}</li>`).join("") : `<li class="sub">還沒有通知。</li>`;
+  const known = new Set(board.alerts.map(a => a.key));
+  $("notices").innerHTML = status.notices.filter(n => !board.alerts.some(a => n.startsWith(a.title)) && !n.startsWith("流速設定不同") && !n.startsWith("CDP 無粒子")).map(n => `<li>▲ ${esc(n)}</li>`).join("");
+  if (alarm.seen) {
+    const fresh = board.alerts.filter(a => !alarm.seen.has(a.key));
+    for (const a of fresh) notify(a.color, a.title, a.steps && a.steps[0] ? "建議:" + a.steps[0] : a.detail);
+    for (const key of alarm.seen) if (!known.has(key) && alarm.titles[key]) notify("green", "已解除:" + alarm.titles[key], "");
+  }
+  alarm.seen = known;
+  alarm.titles = Object.fromEntries(board.alerts.map(a => [a.key, a.title]));
+  document.title = (board.overall === "red" ? "✕ 需要處理 · " : board.overall === "yellow" ? "▲ 需要注意 · " : "") + "CDP LWC 11-D 面板";
+}
+function drawOffline() {
+  setOverall("red", "面板沒有回應", "筆電可能斷電、當機或程式被關閉", "✕");
+  $("alertList").innerHTML = `<div class="alertcard c-red"><b>連不上面板程式</b><p>筆電整台停掉時,它自己發不出 Discord。要靠每天的日報沒出現,或雲端 現場狀態.txt 的更新時間停住來判斷。</p><ol><li>用 AnyDesk 看連不連得上</li><li>連不上就請現場確認電源和網路</li><li>恢復後確認 PADS 和 11-D 重新記錄</li></ol></div>`;
+  document.title = "✕ 面板沒有回應";
+  if (!alarm.offline) notify("red", "面板沒有回應", "筆電可能斷電或當機");
+  alarm.offline = true;
+}
+function notify(color, title, body) {
+  const box = document.createElement("div");
+  box.className = `toast c-${color}`;
+  box.innerHTML = `<b>${esc(title)}</b>${body ? esc(body) : ""}`;
+  box.addEventListener("click", () => box.remove());
+  $("toasts").prepend(box);
+  while ($("toasts").children.length > 5) $("toasts").lastChild.remove();
+  setTimeout(() => box.remove(), color === "red" ? 20000 : 10000);
+  if (alarm.sound && color !== "green" && color !== "blue") beep(color === "red" ? 2 : 1);
+  if (alarm.desktop && color !== "blue" && window.Notification && Notification.permission === "granted") new Notification(title, {body});
+}
+function beep(times) {
+  const context = alarm.audio || (alarm.audio = new AudioContext());
+  for (let i = 0; i < times; i++) {
+    const tone = context.createOscillator(), gain = context.createGain();
+    tone.frequency.value = times > 1 ? 880 : 620;
+    gain.gain.value = 0.08;
+    tone.connect(gain).connect(context.destination);
+    tone.start(context.currentTime + i * 0.3);
+    tone.stop(context.currentTime + i * 0.3 + 0.18);
+  }
+}
+function initBoard() {
+  $("soundBtn").addEventListener("click", () => {
+    alarm.sound = !alarm.sound;
+    $("soundBtn").textContent = "聲音:" + (alarm.sound ? "開" : "關");
+    if (alarm.sound) beep(1);
+  });
+  $("desktopBtn").addEventListener("click", async () => {
+    if (!window.Notification) return;
+    if (!alarm.desktop && Notification.permission !== "granted") await Notification.requestPermission();
+    alarm.desktop = !alarm.desktop && Notification.permission === "granted";
+    $("desktopBtn").textContent = "桌面通知:" + (alarm.desktop ? "開" : "關");
+  });
+}
+function drawDemo(info) {
+  const all = info.groups.flatMap(g => g.items);
+  const current = all.find(s => s.id === info.current);
+  $("demoNow").innerHTML = `<b>目前:${esc(current.label)}</b>(預期${COLOR_WORD[current.color]})<br>${esc(current.note)}`;
+  $("demoAuto").textContent = info.auto ? "停止輪播" : "自動輪播";
+  $("demoAuto").classList.toggle("on", info.auto);
+  $("demoList").innerHTML = info.groups.map(g => `<h3>${esc(g.name)}</h3><div class="grid">${g.items.map(s => `<button class="scene c-${s.color}${s.id === info.current ? " on" : ""}" data-scene="${s.id}" title="${esc(s.note)}">${esc(s.label)}</button>`).join("")}</div>`).join("");
+  state.demo = info;
+}
+async function pollDemo() {
+  try { drawDemo(await (await fetch("/api/demo")).json()); } catch (error) { /* 模擬斷電時連不上是預期的 */ }
+}
+async function initDemo() {
+  $("demoCard").hidden = false;
+  $("demoBanner").hidden = false;
+  await pollDemo();
+  $("demoBanner").textContent = `模擬模式:資料都是假的,不會上傳,也不會傳 Discord。為了快點看到結果,判斷時間縮短了(停止 ${state.demo.stale_seconds} 秒、環境和起霧 ${state.demo.env_seconds} 秒;正式版是 60 秒、15 分鐘、5 分鐘)。`;
+  $("demoList").addEventListener("click", async e => {
+    const button = e.target.closest("[data-scene]");
+    if (!button) return;
+    drawDemo(await (await post("/api/demo", {id: button.dataset.scene})).json());
+    pollLive();
+  });
+  $("demoAuto").addEventListener("click", async () => drawDemo(await (await post("/api/demo", {auto: !state.demo.auto})).json()));
+  setInterval(pollDemo, 3000);
 }
 async function pollLive() {
   const token = ++state.token, span = $("span").value;
-  const width = Math.max(100, Math.floor($("panels").clientWidth - LEFT - RIGHT - 20));
+  const width = Math.max(100, Math.floor($("number").clientWidth - LEFT - RIGHT));
   try {
     const response = await fetch(`/api/live?span=${span}&width=${width}`);
+    if (!response.ok) throw new Error("panel unavailable");
     const data = await response.json();
     if (token !== state.token || !state.live) return;
     const keep = state.hover;
@@ -1070,7 +1223,7 @@ async function pollLive() {
     drawStatus(data.status);
     drawAll();
   } catch (error) {
-    if (state.live) { $("status").textContent = "無法連到面板程式,請確認它還開著"; $("statusbar").innerHTML = ""; }
+    if (state.live) { $("status").textContent = "無法連到面板程式"; drawOffline(); }
   }
 }
 const folders = {pads: new Map(), d11: new Map(), timer: null};
@@ -1209,6 +1362,10 @@ function setHistoryOnly() {
 }
 function setMode(live) {
   state.live = live;
+  $("main").classList.toggle("live", live);
+  $("board").hidden = !live;
+  if (!live) { document.title = "CDP LWC 11-D 資料瀏覽"; $("toasts").innerHTML = ""; }
+  if (state.index.demo) { $("demoCard").hidden = !live; $("demoBanner").hidden = !live; }
   clearInterval(state.timer);
   state.hover = null;
   $("liveBtn").classList.toggle("on", live);
@@ -1222,7 +1379,7 @@ function setMode(live) {
   $("extraPanels").hidden = live;
   if (live) {
     pollLive();
-    state.timer = setInterval(pollLive, 5000);
+    state.timer = setInterval(pollLive, state.index.demo ? 2000 : 5000);
   } else {
     $("statusbar").hidden = true;
     $("notices").innerHTML = "";
@@ -1239,6 +1396,9 @@ function navigate(start, end) {
 function goBack() { if (state.live) return; const last = state.history.pop(); if (last) load(last[0], last[1]); }
 function shift(sign) { const d = state.data; if (d) { const span = d.end - d.start; navigate(d.start + sign * span, d.end + sign * span); } }
 async function init() {
+  // 工具列在窄視窗會換行,左欄和右欄要跟著往下
+  const head = document.querySelector("header");
+  new ResizeObserver(() => document.documentElement.style.setProperty("--head", head.offsetHeight + "px")).observe(head);
   buildPanels();
   const response = await fetch("/api/index");
   state.index = await response.json();
@@ -1267,6 +1427,8 @@ async function init() {
   $("historyBtn").addEventListener("click", () => setMode(false));
   $("modes").hidden = !(state.index.live && state.index.history);
   $("moreSize").hidden = false;
+  initBoard();
+  if (state.index.demo) initDemo();
   $("moreSize").addEventListener("toggle", drawAll);
   $("moreAnalysis").addEventListener("toggle", drawDiagnosis);
   if (state.index.history) initHistory();

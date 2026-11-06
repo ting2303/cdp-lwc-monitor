@@ -205,6 +205,9 @@ class Feed:
         self.stop_event = threading.Event()
         self.wake = threading.Event()
         self.external_notices: List[str] = []
+        self.board: Optional[dict] = None
+        self.env_seconds = float(config.get("env_seconds", 900))
+        self.pressure_span = float(config.get("pressure_span", 1800))
         self.pending_roots: Optional[Tuple[List[Path], List[Path]]] = None
         self.thread: Optional[threading.Thread] = None
 
@@ -516,7 +519,7 @@ class Feed:
                 roots = self.d11_roots if item["label"] == "11-D" else self.pads_roots
                 if item["code"] == "missing" and not roots:
                     item["code"], item["text"] = "unset", "未設定資料夾"
-        return {"instruments": instruments, "notices": notices, "ready": self.ready, "now": now, "stale_seconds": self.stale}
+        return {"instruments": instruments, "notices": notices, "ready": self.ready, "now": now, "stale_seconds": self.stale, "board": self.board}
 
     def clock_check(self, active_seconds: float = 180) -> dict:
         """PADS 和 11-D 是不同軟體:檢查檔案還在更新時,最新資料的時間和電腦時鐘差多少。
@@ -545,9 +548,10 @@ class Feed:
                 out["internal"] = float(offsets[-1])
         return out
 
-    def recent_environment(self, seconds: float = 900, pressure_span: float = 1800) -> dict:
+    def recent_environment(self) -> dict:
         """最近一段時間的環境和儀器狀態中位數,給異常判斷用。"""
         now = local_now()
+        seconds, pressure_span = self.env_seconds, self.pressure_span
         out: dict = {}
 
         def median(buffer: Optional[Buffer], fields: List[str], name: str, span: float) -> Optional[np.ndarray]:
