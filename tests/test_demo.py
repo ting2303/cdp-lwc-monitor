@@ -23,7 +23,7 @@ def run_scenario(root, scenario):
     # 基準資料停在 30 秒前:停掉的儀器已超過 stale_seconds,其他儀器由下面補上這 30 秒
     world = demo.World(root, config, baseline=300, end_offset=30, normal=NORMAL_REFERENCE)
     feed = Feed(config)
-    watcher = Watcher(feed, config, power=world.power, boot=world.boot, processes=world.processes, normal=NORMAL_REFERENCE)
+    watcher = Watcher(feed, config, power=world.power, boot=world.boot, processes=world.processes, normal=NORMAL_REFERENCE, system=world.system)
     world.attach(feed, watcher)
     feed.poll()
     world.apply(scenario, catch_up=False)

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
 
 from .formats import instrument_kind
+from .heartbeat import Heartbeat, valid_url
 from .notify import Notifier, valid_webhook
 
 # 不會存放觀測資料、又可能很大的系統資料夾
@@ -224,6 +225,7 @@ class Locator:
             "cloud_folder": self.config.get("cloud_folder") or find_cloud_folder() or "",
             "site_name": self.config.get("site_name", ""),
             "has_webhook": bool(self.config.get("discord_webhook")),
+            "has_heartbeat": bool(self.config.get("heartbeat_url")),
             "drive_active": bool(self.config.get("status_dir")),
             "backup_minutes": self.config.get("backup_minutes", 30),
             "search": self.search.result() if self.search else None,
@@ -241,7 +243,7 @@ class Locator:
         if self.search:
             self.search.cancelled.set()
 
-    def apply_remote(self, cloud: object, site: object, webhook: object) -> List[str]:
+    def apply_remote(self, cloud: object, site: object, webhook: object, heartbeat: object = None) -> List[str]:
         """雲端上傳和 Discord。webhook 是 None 表示維持原本的設定,不會回傳到網頁。"""
         errors: List[str] = []
         if not isinstance(cloud, str) or not isinstance(site, str):
@@ -250,8 +252,13 @@ class Locator:
             errors.append(f"找不到雲端資料夾:{cloud}")
         if webhook not in (None, "") and not self.config.get("_allow_local_webhook") and not (isinstance(webhook, str) and valid_webhook(webhook.strip())):
             errors.append("Discord Webhook 網址格式不對,應該以 https://discord.com/api/webhooks/ 開頭")
+        allow_local = bool(self.config.get("_allow_local_webhook"))
+        if heartbeat not in (None, "") and not allow_local and not (isinstance(heartbeat, str) and valid_url(heartbeat.strip())):
+            errors.append("心跳網址格式不對,應該以 https:// 開頭")
         if errors:
             return errors
+        if heartbeat is not None:
+            self.config["heartbeat_url"] = heartbeat.strip()
         clean = re.sub(r'[\\/:*?"<>|]', "_", site.strip()) or "現場"
         self.config["site_name"] = site.strip()
         self.config["cloud_folder"] = cloud.replace("\\", "/")
@@ -289,6 +296,14 @@ class Locator:
         if notifier.url is None:
             return "Webhook 網址格式不對"
         return None if notifier.flush() else (notifier.last_error or "傳送失敗")
+
+    def test_heartbeat(self) -> Optional[str]:
+        """送一次心跳。回傳錯誤文字;成功回傳 None。"""
+        url = self.config.get("heartbeat_url")
+        if not url:
+            return "還沒設定心跳網址"
+        beat = Heartbeat(url, allow_local=bool(self.config.get("_allow_local_webhook")))
+        return None if beat.ping() else f"送不出去:{beat.last_error or '網址格式不對'}"
 
     def _save(self) -> None:
         temporary = self.config_path.with_name(self.config_path.name + ".tmp")

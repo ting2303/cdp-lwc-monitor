@@ -24,6 +24,8 @@ NORMAL = {
     "pm": None, "pressure_rate": 0.0, "rh": 25.0, "d11_temp": 20.0, "cdp_pas": 10.0, "lwc_pas": 10.0, "pas_toggle": False,
     "lwc_pressure": 722.0, "clock_shift": 0, "internal_lag": 120, "on_ac": True, "percent": 100, "pads": True, "drive": True,
     "log": None, "backup": None, "min_free_gb": 0, "drive_gone": False, "roots": "all", "read_error": False, "reboot": False, "freeze": False,
+    "stuck_cdp": False, "stuck_lwc": False, "stuck_d11": False, "heater_off": False, "dap_bad": False, "hot_offset": 0.0, "fine_factor": 1.0,
+    "com_gone": False, "sleep": 0, "reboot_pending": False, "heartbeat_bad": False, "backup_old": False,
 }
 COMM = "Error 5902 occurred at VISA_Read>CDP Serial Read"
 
@@ -46,11 +48,24 @@ SCENARIOS = [
     ("outage", "電力和電腦", "現場停電", "red", ["on_battery", "stale:CDP", "stale:LWC-300", "stale:11-D"], "儀器全停,筆電靠電池撐著還能通知。", {"on_ac": False, "percent": 60, "cdp_on": False, "lwc_on": False, "d11_on": False}),
     ("reboot", "電力和電腦", "筆電重開機過", "yellow", ["reboot"], "可能斷電或 Windows 更新。", {"reboot": True}),
     ("dead", "電力和電腦", "筆電整台斷電", "red", [], "筆電自己發不出 Discord。畫面會顯示連不上,30 秒後回到正常。", {"freeze": True}),
+    ("com_gone", "電力和電腦", "COM 埠消失", "red", ["com_missing", "stale:CDP"], "USB 線鬆脫或儀器沒電,幫你分辨不是軟體問題。", {"com_gone": True, "cdp_on": False, "lwc_on": False}),
+    ("sleep", "電力和電腦", "筆電會自己睡著", "yellow", ["sleep_enabled"], "電源設定沒改,睡著時全部停擺。", {"sleep": 1800}),
+    ("update", "電力和電腦", "Windows 更新等重開機", "yellow", ["reboot_pending"], "可能在觀測中自動重開。", {"reboot_pending": True}),
     ("disk", "電力和電腦", "硬碟空間不足", "red", ["disk:"], "空間不足可能讓 PADS 停止存檔。", {"min_free_gb": 1e12}),
     ("drive_stopped", "上傳", "雲端硬碟程式沒開", "red", ["drive_stopped"], "資料留在筆電,不會上傳。", {"drive": False}),
     ("drive_gone", "上傳", "雲端硬碟不見了", "red", ["drive_missing"], "G 槽消失,常見於帳號登出。", {"drive_gone": True}),
     ("backup_failed", "上傳", "備份失敗", "red", ["backup_failed"], "雲端空間滿了或網路問題。", {"backup": {"failed": 3, "sample": "00CDP PBP.csv(模擬)", "time": "模擬"}}),
     ("backup_conflict", "上傳", "備份有衝突", "yellow", ["backup_conflict"], "雲端有內容不同的同名檔案,不會覆蓋。", {"backup": {"conflicts": 2, "time": "模擬"}}),
+    ("heartbeat", "上傳", "外部心跳送不出去", "yellow", ["heartbeat_failed"], "通常是網路中斷。", {"heartbeat_bad": True}),
+    ("backup_old", "上傳", "備份很久沒完成", "yellow", ["backup_stale"], "備份卡住或雲端硬碟有問題。", {"backup_old": True}),
+    ("stuck_cdp", "資料品質", "CDP 數值卡住", "red", ["stuck:CDP"], "檔案還在更新,內容卻完全不變。", {"stuck_cdp": True}),
+    ("stuck_lwc", "資料品質", "LWC-300 數值卡住", "red", ["stuck:LWC-300"], "檔案還在更新,內容卻完全不變。", {"stuck_lwc": True}),
+    ("stuck_d11", "資料品質", "11-D 數值卡住", "red", ["stuck:11-D"], "檔案還在更新,內容卻完全不變。", {"stuck_d11": True}),
+    ("out_of_range", "資料品質", "數值超出合理範圍", "yellow", ["range:11-D"], "濕度 150%,物理上不可能。", {"rh": 150.0}),
+    ("heater", "資料品質", "LWC-300 加熱線沒功率", "red", ["lwc_heater"], "過去就是這個造成 −3 g/m³ 的假訊號。", {"heater_off": True}),
+    ("dap", "資料品質", "LWC-300 乾空氣功率異常", "yellow", ["lwc_dap"], "過去 2024-03-01 整段 +3.8 g/m³ 就是這個。", {"dap_bad": True}),
+    ("baseline", "資料品質", "LWC-300 基線偏移", "yellow", ["lwc_baseline"], "無雲時應接近 0,卻偏高。", {"number": 0.0, "hot_offset": 0.7}),
+    ("fine", "資料品質", "11-D 最小通道偏高", "blue", ["d11_fine"], "乾淨空氣時 0.253 µm 特別高,只提示不校正。", {"pm": 1.0, "fine_factor": 8.0}),
     ("fog", "儀器狀態", "鏡片起霧或結冰", "red", ["fog"], "沒有粒子時 Dump Spot 掉到 0.7 V。", {"number": 0.2, "dump": 0.7}),
     ("laser", "儀器狀態", "雷射電流異常", "yellow", ["env_laser"], "雷射電流偏離溫度和長期趨勢的預期。", {"laser_delta": 6.0}),
     ("laser_hot", "儀器狀態", "雷射過熱", "yellow", ["env_temp:laser_temp"], "雷射溫度超過過去的範圍。", {"laser_temp": 40.0}),
@@ -76,6 +91,7 @@ def config_for(root: Path) -> dict:
         "pads_roots": [str(root / "pads")], "d11_roots": [str(root / "d11")], "refresh_seconds": 1, "rescan_seconds": 1, "history_hours": 3,
         "stale_seconds": 15, "watch_seconds": 2, "status_dir": str(root / "status"), "state_file": str(root / "watch_state.json"),
         "env_seconds": 20, "pressure_span": 60, "fog_seconds": 20, "site_name": "模擬測站", "min_free_gb": 0, "backup_jobs": [], "discord_webhook": "",
+        "stuck_seconds": 20, "lwc_seconds": 20, "baseline_seconds": 20, "flap_seconds": 0, "heartbeat_url": "", "diag_screenshot": False,
     }
 
 
@@ -84,6 +100,19 @@ def _unused_drive() -> str:
         if not Path(f"{letter}:/").exists():
             return f"{letter}:/CDPLWC_模擬"
     return "Q:/CDPLWC_模擬"
+
+
+class _DemoBeat:
+    """假的心跳:只讓面板看到送不出去的狀態,不會連到任何地方。"""
+
+    url = "模擬"
+    fails = 3
+    last_error = "URLError"
+    failing = True
+    configured = True
+
+    def step(self) -> None:
+        pass
 
 
 class World:
@@ -127,6 +156,8 @@ class World:
             return result
 
         feed.status = status
+        watcher.state["com_ports"] = ["COM3", "COM4"]
+        self.real_heartbeat = watcher.heartbeat
 
     # ---- 給 Watcher 的假值 --------------------------------------------
     def power(self) -> dict:
@@ -134,6 +165,10 @@ class World:
 
     def boot(self) -> float:
         return self.boot_time
+
+    def system(self) -> dict:
+        state = self.state
+        return {"com_ports": ["COM4"] if state["com_gone"] else ["COM3", "COM4"], "sleep_ac_seconds": state["sleep"], "hibernate_ac_seconds": 0, "lid_ac_action": 0, "reboot_pending": state["reboot_pending"]}
 
     def processes(self) -> List[str]:
         return [name for name, on in ((PADS_PROCESS, self.state["pads"]), (DRIVE_PROCESS, self.state["drive"])) if on]
@@ -157,7 +192,7 @@ class World:
             f"{bins}\r\n").encode("cp950"))
         self.lwc_path.write_bytes((
             " Offset from UTC = 08:00:00\r\n****\r\n"
-            "End_Seconds,Day_of_Year,Year,Status,LWC-AveragedDAP,PAS(m/s),Static Pressure (mB),Ambient Temperature (C)\r\n").encode("cp950"))
+            "End_Seconds,Day_of_Year,Year,Status,LWC-AveragedDAP,PAS(m/s),Static Pressure (mB),Ambient Temperature (C),TotalPower(W),DAP-Averaged\r\n").encode("cp950"))
         self._log("Recording started.")
 
     def _log(self, message: str) -> None:
@@ -201,21 +236,36 @@ class World:
         counts = [round(number * AREA * pas * w / total) for w in weights]
         lwc = number * 0.0012 * (mvd / 12) ** 3
         dump = state["dump"] + random.uniform(-0.02, 0.02)
-        return f"{seconds}.5,{moment.timetuple().tm_yday},{moment.year},1,{number:.2f},{lwc:.4f},{mvd:.2f},{mvd * 0.9:.2f},{pas:g},{dump:.3f},{self._laser(t, state):.2f},{state['laser_temp'] + random.uniform(-0.1, 0.1):.2f}," + ",".join(str(c) for c in counts) + "\r\n"
+        laser = self._laser(t, state)
+        if state["stuck_cdp"]:
+            dump, laser = state["dump"], 88.0
+        return f"{seconds}.5,{moment.timetuple().tm_yday},{moment.year},1,{number:.2f},{lwc:.4f},{mvd:.2f},{mvd * 0.9:.2f},{pas:g},{dump:.3f},{laser:.2f},{state['laser_temp'] + random.uniform(-0.1, 0.1):.2f}," + ",".join(str(c) for c in counts) + "\r\n"
 
     def _lwc_row(self, t: float, state: dict) -> str:
         moment = datetime.fromtimestamp(t)
         seconds = moment.hour * 3600 + moment.minute * 60 + moment.second
-        value = self._number(t, state) * 0.0003 + random.uniform(-0.01, 0.01)
-        return f"{seconds}.5,{moment.timetuple().tm_yday},{moment.year},1,{value:.4f},{state['lwc_pas']:g},{state['lwc_pressure']:g},10\r\n"
+        value = self._number(t, state) * 0.0003 + random.uniform(-0.01, 0.01) + state["hot_offset"]
+        watts = 0.0949 * state["lwc_pas"]
+        dry = 2.33
+        if state["stuck_lwc"]:
+            value = 0.05
+        power = dry + value * watts
+        if state["heater_off"]:
+            power = 0.03 + random.uniform(-0.01, 0.01)
+            value = (power - dry) / watts
+        if state["dap_bad"]:
+            dry = 0.0
+            value = power / watts
+        return f"{seconds}.5,{moment.timetuple().tm_yday},{moment.year},1,{value:.4f},{state['lwc_pas']:g},{state['lwc_pressure']:g},10,{power:.4f},{dry:g}\r\n"
 
     def _d11_row(self, t: float, state: dict, since: float) -> str:
         moment = datetime.fromtimestamp(t + state["clock_shift"])
         inner = datetime.fromtimestamp(t + state["clock_shift"] - state["internal_lag"])
         pm = state["pm"] if state["pm"] is not None else 9 + 4 * math.sin(2 * math.pi * t / 1500)
         pm *= random.uniform(0.95, 1.05)
-        pressure = 725 - state["pressure_rate"] * max(0.0, t - since) + random.uniform(-0.05, 0.05)
+        pressure = 725 - state["pressure_rate"] * max(0.0, t - since) + (0.0 if state["stuck_d11"] else random.uniform(-0.05, 0.05))
         counts = [round(pm * 400 * (0.253 / s) ** 2.6 * random.uniform(0.85, 1.15), 1) for s in D11_SIZES]
+        counts[0] = round(counts[0] * state["fine_factor"], 1)
         values = [pm * 0.7, pm, pm * 1.3, pm * 1.7, pm * 2.0, pressure, state["rh"], state["d11_temp"], inner.year % 100, inner.month, inner.day, inner.hour, inner.minute, inner.second]
         return f"{moment:%Y-%m-%d %H:%M:%S}\t" + "\t".join(f"{v:.2f}" if isinstance(v, float) else str(v) for v in values) + "\t" + "\t".join(str(c) for c in counts) + "\n"
 
@@ -280,6 +330,9 @@ class World:
                 if state["reboot"]:
                     self.watcher.state["boot"] = self.boot_time - 3600
                 self.watcher.backup_result = state["backup"]
+                self.config["backup_jobs"] = ["模擬"] if state["backup_old"] else []
+                self.watcher.backup_at = time.time() - 99999 if state["backup_old"] else time.time()
+                self.watcher.heartbeat = _DemoBeat() if state["heartbeat_bad"] else self.real_heartbeat
                 self.watcher.status_dir = Path(_unused_drive()) if state["drive_gone"] else Path(self.config["status_dir"])
 
     def set_auto(self, on: bool) -> None:

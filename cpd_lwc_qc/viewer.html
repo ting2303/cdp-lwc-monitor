@@ -53,6 +53,8 @@ main.live aside{max-height:calc(100vh - var(--head) - 48px);overflow:auto}
 .scene{min-height:27px;padding:2px 6px;font-size:12px;text-align:left;border-left:5px solid var(--lamp)}
 .scene.on{outline:2px solid var(--text);outline-offset:0;font-weight:700}
 #demoNow{font-size:12.5px;margin:4px 0 0;min-height:36px}
+.diagtext{white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.5 Consolas,"Microsoft JhengHei",monospace;max-height:64vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+#opsCard select{min-height:26px;padding:1px 4px;font-size:12px}
 .panels{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px 8px}
 .panel{position:relative;border-bottom:1px solid var(--line);padding:6px 0 2px}.panel:last-child{border-bottom:0}
 .panel h2{font-size:13px;font-weight:600;margin:0;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
@@ -187,6 +189,7 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
   <button id="next" title="往後一個視窗長度">往後 →</button>
   <button id="out">縮小範圍倍率</button>
   <button id="back">回上一個範圍</button>
+  <button id="correctBtn" title="LWC-300 用校正後的值;有指定流速時 CDP 也會換算">顯示校正值</button>
   </span>
   <span class="status" id="status"></span>
 </header>
@@ -202,6 +205,9 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
     <div class="card"><h2>目前問題和建議</h2><div id="alertList"></div></div>
     <div class="card"><h2>通知紀錄</h2><ol class="eventlog" id="eventLog"></ol>
       <div class="tools"><button id="soundBtn">聲音:關</button><button id="desktopBtn">桌面通知:關</button></div></div>
+    <div class="card" id="opsCard" hidden><h2>遠端工具</h2>
+      <p class="sub" id="maintNote">去現場或刻意停機前先開,就不會收到一堆通知。問題仍會列出來,時間到自動結束。</p>
+      <div class="tools"><select id="maintHours" aria-label="維護時間"><option value="60">1 小時</option><option value="120" selected>2 小時</option><option value="240">4 小時</option><option value="480">8 小時</option></select><button id="maintBtn">開始維護</button><button id="diagBtn">產生診斷報告</button></div></div>
   </section>
   <div id="diag" hidden>
     <section class="dcard story" aria-label="這天的故事">
@@ -215,6 +221,12 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
       <summary><span id="verdict"></span></summary>
       <ul class="issues" id="issues"></ul>
       <ul class="issues muted" id="okList"></ul>
+    </details>
+    <details class="dcard" id="correctBox">
+      <summary><b>資料校正</b> <span id="correctBrief"></span></summary>
+      <p class="sub">原始資料不會被改。按上方「顯示校正值」可切換;完整結果用 <code>python -m cpd_lwc_qc.correct</code> 輸出。</p>
+      <div id="correctCounts" class="sub"></div>
+      <ul class="issues" id="correctList"></ul>
     </details>
     <details class="dcard manual" id="manualBox">
       <summary><b>⚠ 手動輸入的值(不是儀器量到的):</b><span id="manualBrief"></span></summary>
@@ -267,6 +279,12 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
     </div>
   </aside>
 </main>
+<dialog id="diagDialog" aria-labelledby="diagTitle">
+  <h2 id="diagTitle">遠端診斷報告</h2>
+  <p class="sub" id="diagPath"></p>
+  <pre id="diagText" class="diagtext"></pre>
+  <div class="actions"><button id="diagClose">關閉</button></div>
+</dialog>
 <dialog id="setup" aria-labelledby="setupTitle">
   <h2 id="setupTitle">設定資料夾</h2>
   <div class="sub">自動尋找只看檔名和修改時間,不會開啟檔案,也不會更動任何資料。不搜尋隨身碟、網路磁碟和雲端硬碟。</div>
@@ -287,7 +305,8 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
   <div class="row"><label style="flex:1;min-width:0">雲端資料夾<input id="cloudFolder" style="flex:1;min-width:0" placeholder="例如 G:\我的雲端硬碟"></label></div>
   <div class="row"><label style="flex:1;min-width:0">測站名稱<input id="siteName" style="flex:1;min-width:0" placeholder="例如 鹿林;會出現在通知和雲端資料夾名稱"></label></div>
   <div class="row"><label style="flex:1;min-width:0">Discord Webhook<input id="discordHook" type="password" autocomplete="off" style="flex:1;min-width:0" placeholder="貼上 Webhook 網址"></label><button id="testDiscord" style="white-space:nowrap">傳測試訊息</button></div>
-  <p class="sub" id="remoteHint">資料會複製到「雲端資料夾/CDPLWC_現場/測站名稱」,由 Google 雲端硬碟電腦版上傳。Webhook 等同密碼,只存在這台電腦。</p>
+  <div class="row"><label style="flex:1;min-width:0">外部心跳網址<input id="heartbeatUrl" type="password" autocomplete="off" style="flex:1;min-width:0" placeholder="例如 Healthchecks.io 的 Ping 網址"></label><button id="testHeartbeat" style="white-space:nowrap">送一次心跳</button></div>
+  <p class="sub" id="remoteHint">資料會複製到「雲端資料夾/CDPLWC_現場/測站名稱」,由 Google 雲端硬碟電腦版上傳。Webhook 和心跳網址等同密碼,只存在這台電腦。心跳讓外部服務在筆電整台停掉時通知你。</p>
   <p class="err" id="setupError" hidden></p>
   <div class="actions"><button id="closeSetup">取消</button><button id="applySetup" class="primary">套用</button></div>
   <p class="sub" id="configPath"></p>
@@ -1064,6 +1083,7 @@ function drawScatter(box, title, xLabel, yLabel, p, options) {
   canvas.onmouseleave = () => { cap.textContent = base(); };
 }
 async function loadDiagnosis(start, end) {
+  loadCorrections(start, end);
   const token = state.token;
   try {
     const response = await fetch(`/api/diagnose?start=${start}&end=${end}`);
@@ -1121,6 +1141,7 @@ function drawStatus(status) {
   const [lamp, text, lead] = OVERALL[board.overall];
   const count = board.alerts.filter(a => a.color === "red" || a.color === "yellow").length;
   setOverall(board.overall, text, count ? `${count} 個項目` : lead, lamp);
+  drawMaintenance(board.maintenance);
   const ages = Object.fromEntries(status.instruments.map(i => [i.label, i]));
   $("lights").innerHTML = board.lights.map(l => {
     const item = ages[INSTRUMENT_LIGHT[l.id]];
@@ -1133,12 +1154,68 @@ function drawStatus(status) {
   $("notices").innerHTML = status.notices.filter(n => !board.alerts.some(a => n.startsWith(a.title)) && !n.startsWith("流速設定不同") && !n.startsWith("CDP 無粒子")).map(n => `<li>▲ ${esc(n)}</li>`).join("");
   if (alarm.seen) {
     const fresh = board.alerts.filter(a => !alarm.seen.has(a.key));
-    for (const a of fresh) notify(a.color, a.title, a.steps && a.steps[0] ? "建議:" + a.steps[0] : a.detail);
-    for (const key of alarm.seen) if (!known.has(key) && alarm.titles[key]) notify("green", "已解除:" + alarm.titles[key], "");
+    if (!board.maintenance) {
+      for (const a of fresh) notify(a.color, a.title, a.steps && a.steps[0] ? "建議:" + a.steps[0] : a.detail);
+      for (const key of alarm.seen) if (!known.has(key) && alarm.titles[key]) notify("green", "已解除:" + alarm.titles[key], "");
+    }
   }
   alarm.seen = known;
   alarm.titles = Object.fromEntries(board.alerts.map(a => [a.key, a.title]));
   document.title = (board.overall === "red" ? "✕ 需要處理 · " : board.overall === "yellow" ? "▲ 需要注意 · " : "") + "CDP LWC 11-D 面板";
+}
+function drawMaintenance(item) {
+  alarm.maintenance = item;
+  $("maintBtn").textContent = item ? "結束維護" : "開始維護";
+  $("maintHours").hidden = !!item;
+  $("maintNote").textContent = item ? `維護中,到 ${new Date(item.until * 1000).toLocaleTimeString("zh-TW", {hour: "2-digit", minute: "2-digit"})} 前不發通知。問題仍照常判斷和列出。` : "去現場或刻意停機前先開,就不會收到一堆通知。問題仍會列出來,時間到自動結束。";
+  if (item) {
+    $("overallSub").textContent = "維護中,通知暫停 · " + $("overallSub").textContent;
+  }
+}
+function initOps() {
+  $("opsCard").hidden = false;
+  $("maintBtn").addEventListener("click", async () => {
+    const minutes = alarm.maintenance ? 0 : Number($("maintHours").value);
+    await post("/api/ops/maintenance", {minutes});
+    pollLive();
+  });
+  $("diagClose").addEventListener("click", () => $("diagDialog").close());
+  $("diagBtn").addEventListener("click", async () => {
+    $("diagBtn").disabled = true;
+    $("diagBtn").textContent = "產生中…";
+    try {
+      const result = await (await post("/api/ops/diagnostics")).json();
+      $("diagText").textContent = result.text || (result.errors || []).join(";");
+      $("diagPath").textContent = result.path ? "已存到:" + result.path : "還沒設定雲端資料夾,這份只顯示在這裡。";
+      $("diagDialog").showModal();
+    } finally {
+      $("diagBtn").disabled = false;
+      $("diagBtn").textContent = "產生診斷報告";
+    }
+  });
+}
+const STATUS_MARK = {"自動": "●", "你指定": "●", "等你確認": "▲", "不影響主要結果": "–"};
+async function loadCorrections(start, end) {
+  const result = await (await fetch(`/api/corrections?start=${start}&end=${end}`)).json();
+  if (state.live) return;
+  const items = result.items || [];
+  const waiting = items.filter(i => i.status === "等你確認").length;
+  $("correctBrief").textContent = items.length ? `${items.length} 項` + (waiting ? `,${waiting} 項等你確認` : "") : "這段時間沒有需要校正的地方";
+  $("correctCounts").textContent = Object.entries(result.counts || {}).map(([k, v]) => `${k} ${v} 分鐘`).join(" · ") + (result.error ? " ▲ " + result.error : "");
+  $("correctList").innerHTML = items.map(i => `<li><b>${STATUS_MARK[i.status] || "●"} ${esc(i.instrument)}:${esc(i.kind)}</b>(${esc(i.action)})<br><span class="sub">${esc(i.start_text.slice(5))} – ${esc(i.end_text.slice(5))}</span> ${esc(i.reason)}</li>`).join("");
+}
+function applyCorrectedView() {
+  const on = state.corrected;
+  $("correctBtn").classList.toggle("on", on);
+  $("correctBtn").textContent = on ? "顯示原始值" : "顯示校正值";
+  const lwc = PANELS.find(p => p.id === "lwc"), number = PANELS.find(p => p.id === "number");
+  lwc.series[0][0] = on ? "lwc_corrected" : "lwc_gm3";
+  lwc.series[1][0] = on ? "hotwire_corrected" : "hotwire_gm3";
+  lwc.series[1][1] = on ? "LWC-300(校正)" : "LWC-300";
+  number.series[0][0] = on ? "number_corrected" : "number_cm3";
+  const key = $("lwc").parentElement.querySelectorAll(".key")[1];
+  if (key) key.lastChild.textContent = lwc.series[1][1];
+  drawAll();
 }
 function drawOffline() {
   setOverall("red", "面板沒有回應", "筆電可能斷電、當機或程式被關閉", "✕");
@@ -1304,6 +1381,8 @@ async function openSetup() {
   $("siteName").value = current.site_name || "";
   $("discordHook").value = "";
   $("discordHook").placeholder = current.has_webhook ? "已設定(留空表示不變)" : "貼上 Webhook 網址";
+  $("heartbeatUrl").value = "";
+  $("heartbeatUrl").placeholder = current.has_heartbeat ? "已設定(留空表示不變)" : "例如 Healthchecks.io 的 Ping 網址";
   $("setupError").hidden = true;
   $("searchStatus").textContent = "";
   const busy = state.data && state.data.status && state.data.status.instruments.some(i => i.code === "ok");
@@ -1321,13 +1400,19 @@ function addManual(kind) {
 }
 async function saveRemote() {
   const hook = $("discordHook").value.trim();
-  const response = await post("/api/locate/remote", {cloud_folder: $("cloudFolder").value.trim().replace(/^"|"$/g, ""), site_name: $("siteName").value, discord_webhook: hook || null});
+  const beat = $("heartbeatUrl").value.trim();
+  const response = await post("/api/locate/remote", {cloud_folder: $("cloudFolder").value.trim().replace(/^"|"$/g, ""), site_name: $("siteName").value, discord_webhook: hook || null, heartbeat_url: beat || null});
   const result = await response.json();
   if (!result.ok) { $("setupError").textContent = "▲ " + result.errors.join(";"); $("setupError").hidden = false; return false; }
   $("setupError").hidden = true;
   return true;
 }
 function initSetup() {
+  $("testHeartbeat").addEventListener("click", async () => {
+    if (!(await saveRemote())) return;
+    const result = await (await post("/api/locate/test_heartbeat")).json();
+    $("remoteHint").textContent = result.ok ? "● 心跳已送出,請到心跳服務的網站確認。" : "▲ " + result.errors.join(";");
+  });
   $("testDiscord").addEventListener("click", async () => {
     if (!(await saveRemote())) return;
     const result = await (await post("/api/locate/test_discord")).json();
@@ -1371,6 +1456,7 @@ function setMode(live) {
   $("liveBtn").classList.toggle("on", live);
   $("historyBtn").classList.toggle("on", !live);
   $("spanBox").hidden = !live;
+  if (live && state.corrected) { state.corrected = false; applyCorrectedView(); }
   $("historyTools").style.display = live ? "none" : "contents";
   $("params").hidden = live || !state.index.history;
   $("moreAnalysis").hidden = live || !state.index.history;
@@ -1428,6 +1514,8 @@ async function init() {
   $("modes").hidden = !(state.index.live && state.index.history);
   $("moreSize").hidden = false;
   initBoard();
+  $("correctBtn").addEventListener("click", () => { state.corrected = !state.corrected; applyCorrectedView(); });
+  if (state.index.ops) initOps();
   if (state.index.demo) initDemo();
   $("moreSize").addEventListener("toggle", drawAll);
   $("moreAnalysis").addEventListener("toggle", drawDiagnosis);

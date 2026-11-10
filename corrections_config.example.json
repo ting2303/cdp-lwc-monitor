@@ -1,0 +1,6 @@
+{
+  "_說明": "複製成 corrections_config.json 後修改(放在 cache 資料夾旁邊)。只填你確定的實際風速;沒填的時段不會改值。instrument 是 cdp 或 lwc,時間是當地時間,end 不含。",
+  "pas_true": [
+    {"instrument": "cdp", "start": "2025-04-09 00:00", "end": "2025-05-08 00:00", "speed": 7.0, "note": "例子:依現場風速紀錄"}
+  ]
+}

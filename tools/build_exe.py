@@ -34,7 +34,7 @@ def main() -> int:
         "--paths", str(ROOT),
         str(ROOT / "panel.py"),
     ])
-    for name in ("使用說明.txt", "設定開機自動啟動.bat", "取消開機自動啟動.bat", "模擬展示.bat"):
+    for name in ("使用說明.txt", "設定開機自動啟動.bat", "取消開機自動啟動.bat", "模擬展示.bat", "雲端檢查.bat"):
         shutil.copy(ROOT / "tools" / name, dist / NAME / name)
     return 0
 

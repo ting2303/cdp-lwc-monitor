@@ -25,11 +25,14 @@ def app_dir() -> Path:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from cpd_lwc_qc import cloud_check  # noqa: E402
 from cpd_lwc_qc import demo as demo_mode  # noqa: E402
-from cpd_lwc_qc.live import Feed  # noqa: E402
+from cpd_lwc_qc import diagnostics  # noqa: E402
+from cpd_lwc_qc import watchdog as watchdog_mode  # noqa: E402
+from cpd_lwc_qc.live import Feed, local_now  # noqa: E402
 from cpd_lwc_qc.locate import Locator  # noqa: E402
 from cpd_lwc_qc.viewer import Store, make_handler  # noqa: E402
-from cpd_lwc_qc.watch import Watcher  # noqa: E402
+from cpd_lwc_qc.watch import Watcher, list_processes  # noqa: E402
 
 import backup  # noqa: E402
 
@@ -50,6 +53,12 @@ DEFAULT_CONFIG = {
     "site_name": "",
     "discord_webhook": "",
     "daily_report_hour": 8,
+    "heartbeat_url": "",
+    "heartbeat_seconds": 300,
+    "diag_minutes": 60,
+    "diag_screenshot": True,
+    "auto_restart_drive": True,
+    "flap_seconds": 600,
 }
 
 
@@ -60,19 +69,19 @@ def load_config(path: Path) -> dict:
     return {**DEFAULT_CONFIG, **json.loads(path.read_text(encoding="utf-8"))}
 
 
-def already_running(config_path: Path) -> bool:
+def already_running(config_path: Path, kind: str = "Panel") -> bool:
     """同一份設定只跑一個,否則 Discord 通知和備份會重複。"""
     if sys.platform != "win32":
         return False
     import ctypes
     import hashlib
 
-    name = "Local\\CDP_LWC_Panel_" + hashlib.sha256(str(config_path).lower().encode("utf-8")).hexdigest()[:24]
+    name = f"Local\\CDP_LWC_{kind}_" + hashlib.sha256(str(config_path).lower().encode("utf-8")).hexdigest()[:24]
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateMutexW.restype = ctypes.c_void_p
     kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
     handle = kernel32.CreateMutexW(None, False, name)
-    globals()["_instance_handle"] = handle  # 程式結束時才釋放
+    globals()[f"_instance_{kind}"] = handle  # 程式結束時才釋放
     return bool(handle) and ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
 
 
@@ -84,6 +93,32 @@ def bind(port: int, handler) -> ThreadingHTTPServer:
         except OSError as error:
             last = error
     raise SystemExit(f"找不到可用的連接埠:{last}")
+
+
+class Ops:
+    """面板上的維運操作:維護模式、診斷報告、健康檢查。"""
+
+    def __init__(self, feed: Feed, watcher: Watcher, config: dict):
+        self.feed, self.watcher, self.config = feed, watcher, config
+        self.started = time.time()
+
+    def health(self) -> bool:
+        """讀檔和監測都還在動。看門狗靠這個判斷面板有沒有卡死。"""
+        now = time.time()
+        polled = self.feed.last_poll is not None and local_now() - self.feed.last_poll < 300
+        watched = (self.watcher.last_step is not None and now - self.watcher.last_step < 600) or now - self.started < 600
+        return polled and watched
+
+    def maintenance(self, minutes: float, reason: str):
+        if minutes <= 0:
+            self.watcher.end_maintenance()
+            return None
+        return self.watcher.set_maintenance(minutes, reason)
+
+    def diagnostics(self) -> dict:
+        path = diagnostics.write_report(self.feed, self.watcher, self.config)
+        text = path.read_text(encoding="utf-8-sig") if path else diagnostics.build_report(self.feed, self.watcher, self.config)
+        return {"text": text, "path": str(path) if path else None}
 
 
 def run_backups(config: dict, base: Path) -> dict:
@@ -131,14 +166,14 @@ def run_demo(base: Path, args) -> int:
     normal = load_normal(base, config)
     world = demo_mode.World(root, config, normal=normal)
     feed = Feed(config)
-    watcher = Watcher(feed, config, power=world.power, boot=world.boot, processes=world.processes, normal=normal)
+    watcher = Watcher(feed, config, power=world.power, boot=world.boot, processes=world.processes, normal=normal, system=world.system)
     world.attach(feed, watcher)
     feed.start()
     world.start()
     stop_watch = threading.Event()
     threading.Thread(target=run_watch, args=(feed, watcher, config, base, stop_watch), daemon=True, name="watch").start()
     store = Store(base / "cache", allow_empty=True)
-    server = bind(args.port or 8780, make_handler(store, feed, None, demo=world))
+    server = bind(args.port or 8780, make_handler(store, feed, None, demo=world, ops=Ops(feed, watcher, config)))
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"模擬面板:{url}", flush=True)
     print("關閉這個視窗就會結束模擬。", flush=True)
@@ -158,16 +193,12 @@ def run_demo(base: Path, args) -> int:
 
 
 def run_watch(feed: Feed, watcher: Watcher, config: dict, base: Path, stop: threading.Event) -> None:
-    """定時檢查和備份。出錯時只記下來,不影響面板。"""
-    next_backup = 0.0
+    """定時檢查。出錯時只記下來,不影響面板。"""
     while not stop.is_set():
         if not feed.ready:  # 第一次讀完檔案前不判斷,否則會誤報找不到檔案
             stop.wait(1)
             continue
         try:
-            if config.get("backup_jobs") and time.monotonic() >= next_backup:
-                next_backup = time.monotonic() + float(config.get("backup_minutes", 30)) * 60
-                watcher.backup_result = run_backups(config, base)
             alerts = watcher.step()
             for line in watcher.console_changes(alerts):
                 print(colored(line, alerts), flush=True)
@@ -176,18 +207,70 @@ def run_watch(feed: Feed, watcher: Watcher, config: dict, base: Path, stop: thre
         stop.wait(float(config.get("watch_seconds", 60)))
 
 
+def run_backup_loop(watcher: Watcher, config: dict, base: Path, stop: threading.Event) -> None:
+    """備份和監測分開:第一次備份可能要很久,不能讓通知跟著等。"""
+    watcher.backup_at = time.time()
+    while not stop.is_set():
+        try:
+            if config.get("backup_jobs"):
+                watcher.backup_result = run_backups(config, base)
+                watcher.backup_at = time.time()
+        except Exception as error:  # 下一輪會重試
+            print("備份發生錯誤:", type(error).__name__, error, flush=True)
+        stop.wait(float(config.get("backup_minutes", 30)) * 60)
+
+
+def run_diag_loop(feed: Feed, watcher: Watcher, config: dict, stop: threading.Event) -> None:
+    """定時把診斷報告放到雲端,人不在現場也看得到。"""
+    stop.wait(120)
+    while not stop.is_set():
+        try:
+            diagnostics.write_report(feed, watcher, config)
+        except Exception as error:  # 診斷不能影響監測
+            print("診斷報告發生錯誤:", type(error).__name__, flush=True)
+        stop.wait(float(config.get("diag_minutes", 60)) * 60)
+
+
+def run_watchdog(base: Path, config_path: Path, args) -> int:
+    """從原本的參數拿掉 --watchdog,其他照舊傳給面板。"""
+    if already_running(config_path, "Watchdog"):
+        print("看門狗已經在執行。", flush=True)
+        return 0
+    forward = [a for a in sys.argv[1:] if a != "--watchdog"]
+    command = [sys.executable] + ([] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())]) + forward
+    try:
+        config = load_config(config_path)
+    except (OSError, json.JSONDecodeError):
+        config = {}
+
+    def watch_drive() -> bool:
+        return bool(config.get("auto_restart_drive", True) and config.get("status_dir"))
+
+    dog = watchdog_mode.Watchdog(command, base, config_path.with_name("panel_port.txt"), base / "watchdog.log", watch_drive=watch_drive, processes=list_processes)
+    return dog.run()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="即時監測面板")
     parser.add_argument("--config", default=None)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--demo", action="store_true", help="模擬各種狀況,不碰真實資料")
+    parser.add_argument("--watchdog", action="store_true", help="監看面板,當掉時自動重開")
+    parser.add_argument("--cloud-check", default=None, help="在另一台電腦確認雲端資料有更新,參數是雲端硬碟資料夾")
     args = parser.parse_args()
     base = app_dir()
     if sys.platform == "win32":
         os.system("")  # 讓黑色視窗顯示顏色
     if args.demo:
         return run_demo(base, args)
+    if args.cloud_check:
+        path = Path(args.config).resolve() if args.config else base / "panel_config.json"
+        try:
+            settings = load_config(path)
+        except (OSError, json.JSONDecodeError):
+            settings = {}
+        return cloud_check.run(Path(args.cloud_check), settings, base / "cloud_check_state.json")
     config_path = Path(args.config).resolve() if args.config else base / "panel_config.json"
     try:
         config = load_config(config_path)
@@ -196,6 +279,8 @@ def main() -> int:
         input("按 Enter 結束")
         return 2
 
+    if args.watchdog:
+        return run_watchdog(base, config_path, args)
     if already_running(config_path):
         print("面板已經在執行,直接開啟現有的畫面。", flush=True)
         if not args.no_browser:
@@ -208,14 +293,20 @@ def main() -> int:
     feed = Feed(config)
     feed.start()
     config.setdefault("state_file", str(config_path.with_name("watch_state.json")))
-    watcher = Watcher(feed, config, normal=load_normal(base, config))
+    watcher = Watcher(feed, config, normal=load_normal(base, config), system=diagnostics.SystemStatus())
     stop_watch = threading.Event()
     threading.Thread(target=run_watch, args=(feed, watcher, config, base, stop_watch), daemon=True, name="watch").start()
+    threading.Thread(target=run_backup_loop, args=(watcher, config, base, stop_watch), daemon=True, name="backup").start()
+    threading.Thread(target=run_diag_loop, args=(feed, watcher, config, stop_watch), daemon=True, name="diag").start()
     store = Store(base / str(config.get("cache", "cache")), allow_empty=True)
     locator = Locator(feed, config_path, config, skip=[str(base)])
     locator.on_change = watcher.reconfigure
-    server = bind(args.port or int(config["port"]), make_handler(store, feed, locator))
+    server = bind(args.port or int(config["port"]), make_handler(store, feed, locator, ops=Ops(feed, watcher, config)))
     url = f"http://127.0.0.1:{server.server_address[1]}/"
+    try:
+        config_path.with_name("panel_port.txt").write_text(str(server.server_address[1]), encoding="utf-8")
+    except OSError:
+        pass
     print(f"面板已啟動:{url}", flush=True)
     print("此程式只讀取資料,不會控制儀器。關閉這個視窗就會結束面板。", flush=True)
     if not args.no_browser:

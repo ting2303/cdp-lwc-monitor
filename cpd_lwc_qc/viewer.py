@@ -21,6 +21,7 @@ from .diagnose import CHRONIC, MANUAL_CHANNELS, Aligned, diagnose, run_checks
 from .normal import CLOUD_NUMBER, site_of
 from .story import build_story, day_metrics
 from .store import Channels, Series, load, load_channels
+from .correct import FOG, HEATER, NO_BASELINE, START, FINE, Corrections, _at, compute, load_overrides
 
 HERE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent)) / "cpd_lwc_qc"
 PAGE = HERE / "viewer.html"
@@ -81,6 +82,38 @@ class Store:
         if not path.exists():
             path = BUNDLED_NORMAL
         self.normal = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        self.corrections: Optional[Corrections] = None
+        self.correction_error: Optional[str] = None
+        if self.channels:
+            try:
+                overrides = load_overrides(cache.parent / "corrections_config.json")
+                self.corrections = compute(self, overrides)
+                if self.cdp is not None:
+                    self.cdp.values["hotwire_corrected"] = _at(self.corrections.lwc_time, self.corrections.lwc_corrected, self.cdp.time.astype("int64"))
+                    self.cdp.values["number_corrected"] = _at(self.corrections.cdp_time, self.corrections.number_corrected, self.cdp.time.astype("int64"))
+                    self.cdp.values["lwc_corrected"] = _at(self.corrections.cdp_time, self.corrections.lwc_cdp_corrected, self.cdp.time.astype("int64"))
+            except (ValueError, KeyError, OSError, TypeError) as error:
+                self.correction_error = f"校正設定有誤:{error}"
+                print(self.correction_error, flush=True)
+
+    def correction_items(self, start: int, end: int) -> dict:
+        """這段時間做了哪些校正。"""
+        if self.corrections is None:
+            return {"items": [], "error": self.correction_error}
+        items = [i for i in self.corrections.items if i["start"] < end and i["end"] > start]
+        c = self.corrections
+
+        def minutes(time: np.ndarray, flags: np.ndarray, bit: int) -> int:
+            low, high = np.searchsorted(time, [start, end])
+            return int(np.count_nonzero(flags[low:high] & bit))
+
+        counts = {
+            "LWC-300 移除": minutes(c.lwc_time, c.lwc_flags, HEATER | START),
+            "LWC-300 基線未校正": minutes(c.lwc_time, c.lwc_flags, NO_BASELINE),
+            "CDP 可能起霧": minutes(c.cdp_time, c.cdp_flags, FOG),
+            "11-D 0.253 µm 偏高": minutes(c.d11_time, c.d11_flags, FINE),
+        }
+        return {"items": items[:60], "total": len(items), "counts": {k: v for k, v in counts.items() if v}, "error": self.correction_error}
 
     def default_range(self) -> Dict[str, int]:
         """預設顯示最近一段野外 CDP 有雲、且 11-D 也有資料的 3 天。"""
@@ -250,13 +283,13 @@ class Store:
             "end": end,
             "step": step,
             "count": count,
-            "cdp": bucket(self.cdp, ["number_cm3", "lwc_gm3", "hotwire_gm3", "mvd_um", "ed_um", "pas_ms", "dump_spot_v", "laser_ma"], start, end, step),
+            "cdp": bucket(self.cdp, ["number_cm3", "lwc_gm3", "hotwire_gm3", "mvd_um", "ed_um", "pas_ms", "dump_spot_v", "laser_ma"] + [n for n in ("hotwire_corrected", "number_corrected", "lwc_corrected") if self.cdp is not None and n in self.cdp.values], start, end, step),
             "d11": bucket(self.d11, ["PM1", "PM2.5", "PM10", "TSP", "Pres", "rH_i", "Temp_i"], start, end, step),
             "sessions": sessions,
         }
 
 
-def make_handler(store: Store, feed=None, locator=None, demo=None):
+def make_handler(store: Store, feed=None, locator=None, demo=None, ops=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args) -> None:
             pass
@@ -280,12 +313,31 @@ def make_handler(store: Store, feed=None, locator=None, demo=None):
         def do_POST(self) -> None:
             url = urlparse(self.path)
             is_demo = demo is not None and url.path == "/api/demo"
-            if not is_demo and (locator is None or not url.path.startswith("/api/locate")):
+            is_ops = ops is not None and url.path.startswith("/api/ops/")
+            if not is_demo and not is_ops and (locator is None or not url.path.startswith("/api/locate")):
                 self._json({"error": "not found"}, 404)
                 return
             # 自訂標頭會讓跨網站請求被瀏覽器擋下
             if not self._local_request() or self.headers.get("X-Panel") != "1":
                 self._json({"error": "只接受面板本身的操作"}, 403)
+                return
+            if is_ops:
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length > 4096:
+                        raise ValueError("內容太大")
+                    body = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    if url.path == "/api/ops/maintenance":
+                        minutes = float(body.get("minutes", 0))
+                        if minutes < 0 or minutes > 7 * 1440:
+                            raise ValueError("維護時間要在 0 到 7 天之間")
+                        self._json({"ok": True, "maintenance": ops.maintenance(minutes, str(body.get("reason", "")))})
+                    elif url.path == "/api/ops/diagnostics":
+                        self._json({"ok": True, **ops.diagnostics()})
+                    else:
+                        self._json({"error": "not found"}, 404)
+                except (ValueError, AttributeError, TypeError) as error:
+                    self._json({"ok": False, "errors": [str(error)]}, 400)
                 return
             if is_demo:
                 try:
@@ -311,6 +363,9 @@ def make_handler(store: Store, feed=None, locator=None, demo=None):
             elif url.path == "/api/locate/cancel":
                 locator.cancel()
                 self._json({"ok": True})
+            elif url.path == "/api/locate/test_heartbeat":
+                error = locator.test_heartbeat()
+                self._json({"ok": error is None, "errors": [error] if error else []}, 200 if error is None else 400)
             elif url.path == "/api/locate/test_discord":
                 error = locator.test_message()
                 self._json({"ok": error is None, "errors": [error] if error else []}, 200 if error is None else 400)
@@ -320,7 +375,7 @@ def make_handler(store: Store, feed=None, locator=None, demo=None):
                     if length > 65536:
                         raise ValueError("內容太大")
                     body = json.loads(self.rfile.read(length).decode("utf-8"))
-                    errors = locator.apply_remote(body.get("cloud_folder"), body.get("site_name"), body.get("discord_webhook"))
+                    errors = locator.apply_remote(body.get("cloud_folder"), body.get("site_name"), body.get("discord_webhook"), body.get("heartbeat_url"))
                 except (ValueError, AttributeError) as error:
                     errors = [str(error)]
                 except OSError as error:
@@ -356,7 +411,11 @@ def make_handler(store: Store, feed=None, locator=None, demo=None):
                 index["live"] = feed is not None
                 index["locate"] = locator is not None
                 index["demo"] = demo is not None
+                index["ops"] = ops is not None
                 self._json(index)
+            elif url.path == "/api/health":
+                healthy = ops.health() if ops is not None else True
+                self._json({"ok": healthy}, 200 if healthy else 503)
             elif url.path == "/api/demo" and demo is not None:
                 self._json(demo.describe())
             elif url.path == "/api/live":
@@ -374,6 +433,14 @@ def make_handler(store: Store, feed=None, locator=None, demo=None):
                     self._json({"error": "span、width 需要是整數"}, 400)
                     return
                 self._json(feed.window(span, width))
+            elif url.path == "/api/corrections":
+                query = parse_qs(url.query)
+                try:
+                    start, end = int(query["start"][0]), int(query["end"][0])
+                except (KeyError, ValueError):
+                    self._json({"error": "需要 start、end"}, 400)
+                    return
+                self._json(store.correction_items(start, end))
             elif url.path == "/api/window":
                 query = parse_qs(url.query)
                 try:

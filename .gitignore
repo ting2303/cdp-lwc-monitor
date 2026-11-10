@@ -28,3 +28,8 @@ __pycache__/
 .venv/
 venv*/
 .claude/
+
+# 面板執行時產生
+panel_port.txt
+watchdog*.log
+cloud_check_state.json

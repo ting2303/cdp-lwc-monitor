@@ -20,7 +20,7 @@ from .formats import BIN_COLUMN, CDP_COLUMNS, ENCODING, LWC_COLUMNS, MARKER, as_
 from .store import d11_edges
 
 CDP_FIELDS = ["number_cm3", "lwc_gm3", "mvd_um", "ed_um", "pas_ms", "dump_spot_v", "laser_ma", "laser_temp_c"]
-LWC_FIELDS = ["lwc_gm3", "pas_ms", "pressure_mb", "temperature_c"]
+LWC_FIELDS = ["lwc_gm3", "pas_ms", "pressure_mb", "temperature_c", "total_power_w", "dap_averaged"]
 D11_MASS = ["PM1", "PM2.5", "PM4", "PM10", "TSP"]
 D11_LOG = ["Pres", "rH_i", "Temp_i"]
 D11_CLOCK = ["Year", "Mon", "Day", "Hr", "Min", "Sec"]
@@ -208,6 +208,9 @@ class Feed:
         self.board: Optional[dict] = None
         self.env_seconds = float(config.get("env_seconds", 900))
         self.pressure_span = float(config.get("pressure_span", 1800))
+        self.stuck_seconds = float(config.get("stuck_seconds", 1800))
+        self.lwc_seconds = float(config.get("lwc_seconds", 300))
+        self.baseline_seconds = float(config.get("baseline_seconds", 1800))
         self.pending_roots: Optional[Tuple[List[Path], List[Path]]] = None
         self.thread: Optional[threading.Thread] = None
 
@@ -520,6 +523,120 @@ class Feed:
                 if item["code"] == "missing" and not roots:
                     item["code"], item["text"] = "unset", "未設定資料夾"
         return {"instruments": instruments, "notices": notices, "ready": self.ready, "now": now, "stale_seconds": self.stale, "board": self.board}
+
+    def data_checks(self) -> dict:
+        """資料本身合不合理。門檻見 watch.py 的說明,都用過去資料回放過。"""
+        now = local_now()
+        out: dict = {"stuck": [], "range": []}
+
+        def recent(buffer: Optional[Buffer], fields: List[str], name: str, span: float) -> Tuple[np.ndarray, np.ndarray]:
+            if buffer is None or not buffer.size:
+                return np.empty(0), np.empty(0)
+            times, values = buffer.view()
+            low = int(np.searchsorted(times, now - span))
+            return times[low:], values[low:, fields.index(name)]
+
+        with self.lock:
+            # 同時有好幾個欄位一直完全相同,才算卡住;只看一個欄位可能只是解析度不夠
+            for label, buffer, fields, names in (
+                ("CDP", self.cdp, CDP_FIELDS, ["dump_spot_v", "laser_ma"]),
+                ("LWC-300", self.hot, LWC_FIELDS, ["lwc_gm3", "total_power_w"]),
+                ("11-D", self.d11_log, D11_LOG, ["Pres", "Temp_i", "rH_i"]),
+            ):
+                frozen, usable = True, False
+                for name in names:
+                    times, column = recent(buffer, fields, name, self.stuck_seconds)
+                    column = column[np.isfinite(column)]
+                    if len(times) < 3 or times[-1] - times[0] < 0.8 * self.stuck_seconds or len(column) < 3:
+                        continue
+                    usable = True
+                    frozen = frozen and bool(np.all(column == column[0]))
+                if usable and frozen:
+                    out["stuck"].append(label)
+            for label, buffer, fields, name, title, low_limit, high_limit in (
+                ("CDP", self.cdp, CDP_FIELDS, "number_cm3", "濃度", 0.0, 20000.0),
+                ("CDP", self.cdp, CDP_FIELDS, "dump_spot_v", "Dump Spot", -0.5, 11.0),
+                ("LWC-300", self.hot, LWC_FIELDS, "lwc_gm3", "LWC", -10.0, 10.0),
+                ("11-D", self.d11_mass, D11_MASS, "PM2.5", "PM2.5", 0.0, 5000.0),
+                ("11-D", self.d11_log, D11_LOG, "Pres", "氣壓", 400.0, 1100.0),
+                ("11-D", self.d11_log, D11_LOG, "rH_i", "內部濕度", 0.0, 100.0),
+                ("11-D", self.d11_log, D11_LOG, "Temp_i", "內部溫度", -40.0, 70.0),
+            ):
+                _, column = recent(buffer, fields, name, self.lwc_seconds)
+                column = column[np.isfinite(column)]
+                if len(column) >= 3:
+                    value = float(np.median(column))
+                    if value < low_limit or value > high_limit:
+                        out["range"].append((label, f"{title} {value:g},合理範圍是 {low_limit:g} 到 {high_limit:g}"))
+            _, power = recent(self.hot, LWC_FIELDS, "total_power_w", self.lwc_seconds)
+            power = power[np.isfinite(power)]
+            if len(power) >= 3:
+                out["power"] = float(np.median(power))
+            _, dap = recent(self.hot, LWC_FIELDS, "dap_averaged", self.lwc_seconds)
+            dap = dap[np.isfinite(dap)]
+            if len(dap) >= 3:
+                out["dap"] = float(np.median(dap))
+            # 無雲時 LWC-300 應接近 0
+            if self.cdp is not None and self.cdp.size and self.hot.size:
+                cdp_times, number = recent(self.cdp, CDP_FIELDS, "number_cm3", self.baseline_seconds)
+                hot_times, hot = recent(self.hot, LWC_FIELDS, "lwc_gm3", self.baseline_seconds)
+                if len(cdp_times) >= 3 and len(hot_times) >= 3:
+                    place = np.clip(np.searchsorted(cdp_times, hot_times), 0, len(cdp_times) - 1)
+                    clear = hot[(number[place] < 1) & np.isfinite(hot)]
+                    if len(clear) >= 0.5 * len(hot):
+                        out["baseline"] = float(np.median(clear))
+            # 11-D 最小通道是否遠高於下一個通道(零氣測試前只標記)
+            if self.d11_spec is not None and self.d11_spec.size and self.d11_edges is not None and len(self.d11_edges) > 2:
+                times, values = self.d11_spec.view()
+                low = int(np.searchsorted(times, now - self.env_seconds))
+                recent_spec = values[low:]
+                _, pm = recent(self.d11_mass, D11_MASS, "PM2.5", self.env_seconds)
+                pm = pm[np.isfinite(pm)]
+                if len(recent_spec) >= 3 and len(pm) >= 3:
+                    widths = np.log10(self.d11_edges[1:3] / self.d11_edges[0:2])
+                    first, second = recent_spec[:, 0] * widths[0] * 1000, recent_spec[:, 1] * widths[1] * 1000
+                    with np.errstate(invalid="ignore", divide="ignore"):
+                        ratio = float(np.nanmedian(first / np.where(second > 0, second, np.nan))) if np.any(second > 0) else float("nan")
+                    if np.isfinite(ratio) and float(np.nanmedian(first)) >= 10:
+                        out["fine_ratio"], out["fine_pm"] = ratio, float(np.median(pm))
+        return out
+
+    def daily_summary(self, seconds: float = 86400) -> dict:
+        """最近一天的摘要,每小時一格,給每日回報用。"""
+        now = local_now()
+        hours = int(seconds // 3600)
+        start = now - hours * 3600
+        out: dict = {"coverage": {}, "hours": hours}
+
+        def per_hour(times: np.ndarray) -> np.ndarray:
+            index = ((times - start) // 3600).astype(int)
+            return np.bincount(index[(index >= 0) & (index < hours)], minlength=hours)
+
+        with self.lock:
+            for label, buffer in (("CDP", self.cdp), ("LWC-300", self.hot), ("11-D", self.d11_mass)):
+                if buffer is None or not buffer.size:
+                    out["coverage"][label] = 0.0
+                    continue
+                times, _ = buffer.view()
+                times = times[times >= start]
+                out["coverage"][label] = float(min(1.0, len(np.unique(times // 60)) / (hours * 60)))
+            if self.cdp is not None and self.cdp.size:
+                times, values = self.cdp.view()
+                chosen = times >= start
+                number = values[chosen, CDP_FIELDS.index("number_cm3")]
+                cloudy = number > 50
+                out["cloud_by_hour"] = per_hour(times[chosen][cloudy]).tolist()
+                out["cloud_minutes"] = int(len(np.unique(times[chosen][cloudy] // 60)))
+                if cloudy.any():
+                    out["number"] = float(np.median(number[cloudy]))
+                    out["mvd"] = float(np.nanmedian(values[chosen, CDP_FIELDS.index("mvd_um")][cloudy]))
+            if self.d11_mass.size:
+                times, values = self.d11_mass.view()
+                column = values[times >= start, D11_MASS.index("PM2.5")]
+                column = column[np.isfinite(column)]
+                if len(column):
+                    out["pm25"] = float(np.median(column))
+        return out
 
     def clock_check(self, active_seconds: float = 180) -> dict:
         """PADS 和 11-D 是不同軟體:檢查檔案還在更新時,最新資料的時間和電腦時鐘差多少。

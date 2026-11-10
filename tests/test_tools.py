@@ -217,8 +217,9 @@ class Rules(unittest.TestCase):
         self.assertIn("差 10%", rows["CDP 流速"]["effect"])
         self.assertEqual(rows["LWC-300 壓力"]["status"], "watch")
         self.assertIn("差 +90", rows["LWC-300 壓力"]["note"])
-        # (2.4-2.3)/0.15=0.667 W per g/m³;差 1 m/s:2.3×0.6/7/0.667=0.30
-        self.assertIn("0.30", rows["LWC-300 流速"]["effect"])
+        # LWC-AveragedDAP = (P − DAP) ÷ W,W 正比於流速:差 1 m/s 約差 1/7
+        self.assertIn("差 14%", rows["LWC-300 流速"]["effect"])
+        self.assertIn("LWC-AveragedDAP 幾乎不受影響", rows["LWC-300 壓力"]["effect"])
 
     def test_manual_setting_changed_during_window(self):
         pas = np.full(240, 8.0)

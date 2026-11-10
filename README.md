@@ -17,7 +17,7 @@
 下載 Releases 的 zip,解壓縮後照裡面的 `使用說明.txt` 做,不必安裝 Python。
 面板會顯示 CDP、LWC-300、11-D,把資料複製到 Google 雲端硬碟,有問題時傳到 Discord 並附建議。
 
-`panel_config.json` 含 Discord Webhook,已排除在版本控制外,不要上傳。觀測資料也不放在這個專案。
+`panel_config.json` 含 Discord Webhook 和心跳網址,已排除在版本控制外,不要上傳。觀測資料也不放在這個專案。
 
 自己打包:
 
@@ -26,13 +26,31 @@ python -m venv venv && venv/Scripts/pip install numpy pyinstaller
 venv/Scripts/python tools/build_exe.py build_tmp dist
 ```
 
+## 無人值守
+
+| 功能 | 怎麼用 |
+|---|---|
+| 外部心跳 | 在面板填 Healthchecks.io 的 Ping 網址;筆電整台停掉時由外部通知 |
+| 看門狗 | `CDP_LWC_11D_Panel.exe --watchdog`,面板當掉或沒回應就重開 |
+| 遠端診斷 | 每小時寫到雲端狀態資料夾,含 COM 埠和螢幕截圖 |
+| 維護模式 | 面板左下方,暫停通知,時間到自動結束 |
+| 確認上傳 | 另一台電腦跑 `--cloud-check 雲端資料夾` |
+
+## 資料校正
+
+```bash
+python -m cpd_lwc_qc.correct --cache cache --out output/corrected
+```
+
+原始資料不會被改。依據和限制見 [investigations/history_oddities](investigations/history_oddities/README.md)。
+
 ## 模擬各種狀況
 
 ```bash
 python panel.py --demo
 ```
 
-用假資料走完整的讀檔和判斷流程,可以點選 35 種情境,看燈號和通知。不碰真實資料,不上傳,不傳 Discord。
+用假資料走完整的讀檔和判斷流程,可以點選 48 種情境,看燈號和通知。不碰真實資料,不上傳,不傳 Discord。
 `tests/test_demo.py` 會檢查每個情境的燈號,以及每種通知都有對應的情境。
 
 ## 即時面板(EXE)

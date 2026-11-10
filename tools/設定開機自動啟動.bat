@@ -10,7 +10,7 @@ if not exist "%EXE%" (
 )
 > "%TARGET%" echo @echo off
 >> "%TARGET%" echo chcp 65001 ^>nul
->> "%TARGET%" echo start "CDP LWC 11-D Panel" /min "%EXE%" --no-browser
+>> "%TARGET%" echo start "CDP LWC 11-D Panel" /min "%EXE%" --watchdog --no-browser
 if errorlevel 1 (
   echo 設定失敗。
   pause

@@ -252,7 +252,7 @@ def run_checks(a: Aligned, store, normal: Optional[dict]) -> List[dict]:
     if pads_pressure is not None and measured is not None:
         diff = pads_pressure - measured
         status = PROBLEM if abs(diff) > 50 else (WATCH if abs(diff) > 15 else OK)
-        checks.append(_check("pressure", "LWC 壓力設定", status, f"{pads_pressure:g} / 實測 {measured:.0f} hPa", f"LWC-300 手動設定與 11-D 實測差 {diff:+.0f} hPa。差太多會影響 LWC-300 的空氣性質計算。"))
+        checks.append(_check("pressure", "LWC 壓力設定", status, f"{pads_pressure:g} / 實測 {measured:.0f} hPa", f"LWC-300 手動設定與 11-D 實測差 {diff:+.0f} hPa。差太多會影響 LWC-CalculatedDAP;圖上的 LWC-AveragedDAP 幾乎不受影響。"))
     else:
         checks.append(_check("pressure", "LWC 壓力設定", NA, "—", "需要同時有 LWC-300 和 11-D。"))
     return checks
@@ -300,14 +300,16 @@ def manual_settings(a: Aligned, store) -> dict:
             return "會影響 LWC-300 的計算"
         wire = _median(a.get("lwc", "EffectiveWireTemp(C)")) or 150.0
         ambient = _median(a.get("lwc", "Ambient Temperature (C)")) or 10.0
+        # PADS 的 LWC-AveragedDAP = (總功率 − 量測的乾空氣功率) ÷ W,W 約 0.095 × 流速(過去資料驗證)。
+        # 壓力和溫度進的是「計算」乾空氣功率,所以只明顯影響 LWC-CalculatedDAP。
         if name == "PAS(m/s)" and hot_pas:
-            return f"差 1 m/s,LWC-300 約差 {dry * DRY_EXPONENT / hot_pas / watts:.2f} g/m³"
+            return f"LWC-300 與它成反比:差 1 m/s 約差 {100 / hot_pas:.0f}%"
         pressure = _median(a.get("lwc", "Static Pressure (mB)"))
         if name == "Static Pressure (mB)" and pressure:
-            return f"差 50 hPa,LWC-300 約差 {dry * DRY_EXPONENT * 50 / pressure / watts:.2f} g/m³"
+            return f"只明顯影響 LWC-CalculatedDAP:差 50 hPa 約差 {dry * DRY_EXPONENT * 50 / pressure / watts:.2f} g/m³;圖上的 LWC-AveragedDAP 幾乎不受影響"
         if name in ("Ambient Temperature (C)", "EffectiveWireTemp(C)") and wire > ambient:
             amount = 5 if name.startswith("Ambient") else 10
-            return f"差 {amount} °C,LWC-300 約差 {dry * amount / (wire - ambient) / watts:.2f} g/m³"
+            return f"只明顯影響 LWC-CalculatedDAP:差 {amount} °C 約差 {dry * amount / (wire - ambient) / watts:.2f} g/m³;圖上的 LWC-AveragedDAP 幾乎不受影響"
         return "會影響 LWC-300 的計算"
 
     for kind, name, label, unit in MANUAL_CHANNELS:

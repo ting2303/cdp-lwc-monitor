@@ -38,6 +38,7 @@ LWC_COLUMNS = {
     "PAS(m/s)": "pas_ms",
     "Static Pressure (mB)": "pressure_mb",
     "Ambient Temperature (C)": "temperature_c",
+    "TotalPower(W)": "total_power_w",
 }
 
 _INSTRUMENT_FILE = re.compile(r"^\d\d(LWC 300_|CDP PBP|CDP|FM 100)(\d{14})\.csv$")

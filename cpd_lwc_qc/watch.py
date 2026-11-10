@@ -44,6 +44,17 @@ ADVICE = {
     "env_laser": ["對照 Dump Spot 和雷射溫度", "持續偏離時記錄下來,年度校正時請 DMT 檢查"],
     "clock": ["用 AnyDesk 檢查筆電的日期、時間和時區", "確認 PADS 和 11-D 在同一台筆電上記錄", "時鐘修正前後的資料要分開對齊,並寫進觀測紀錄"],
     "d11_internal": ["不影響面板對齊:程式用電腦記錄的時間", "下次維護時校正 11-D 內部時鐘"],
+    "stuck": ["用 AnyDesk 看該儀器的軟體畫面還有沒有在動", "數值完全不變通常代表軟體或連線卡住;確認後重新開始記錄", "把這段時間標記為不可用"],
+    "range": ["先看該儀器的軟體畫面是否也是這個值", "檢查感測器和連線", "把這段時間標記為可疑"],
+    "lwc_heater": ["確認 LWC-300 的電源和 PADS 裡加熱線是否開啟", "檢查 LWC-300 的線路和探頭", "這段時間的 LWC-300 不可用;校正層會自動標記"],
+    "lwc_dap": ["在 PADS 重新設定乾空氣功率(無雲時)", "這段時間的 LWC-300 不可用,校正層會改用無雲時的功率重算"],
+    "lwc_baseline": ["確認探頭沒有積水或結冰", "無雲時在 PADS 重新歸零", "數值會由校正層扣掉基線,但請標記這段時間"],
+    "d11_fine": ["不一定是問題,雲把大粒子洗掉時也可能這樣", "有機會時在進氣口接過濾器做零氣測試,分辨是雜訊或真實粒子", "校正層只標記,不會扣掉"],
+    "com_missing": ["檢查 USB 或序列線有沒有鬆脫", "確認該儀器有電;儀器斷電時 COM 埠也可能消失", "線路恢復後,在 PADS 或 11-D 軟體重新連線並開始記錄"],
+    "sleep_enabled": ["到 Windows 電源設定,把接電時的睡眠和休眠都改成「永不」", "闔上螢幕的動作改成「不執行任何動作」"],
+    "reboot_pending": ["用 AnyDesk 看更新排定的時間", "能的話趁沒有觀測時重開,再重新開始記錄", "設定使用時段,避免在觀測中自動重開"],
+    "heartbeat_failed": ["檢查筆電的網路", "資料和通知還在;網路恢復後會自動恢復", "如果一直失敗,檢查心跳網址是否正確"],
+    "backup_stale": ["用面板或診斷報告看備份有沒有卡住", "檢查 Google 雲端硬碟電腦版和硬碟空間", "重開面板後會立刻備份一次"],
     "manual_pas": ["確認是不是有人改了設定", "在觀測紀錄寫下修改時間;濃度和 LWC 會在這個時間點跳動"],
     "manual_mismatch": ["確認兩台實際吹到的風是否相同", "決定要用哪個值,之後統一設定"],
     "manual_pressure": ["把 LWC-300 的手動壓力改成接近實測值", "在觀測紀錄寫下修改時間"],
@@ -60,7 +71,7 @@ _INSTRUMENT = {"CDP": "cdp", "LWC-300": "lwc", "11-D": "d11"}
 def categories_of(alert: dict) -> List[str]:
     key = alert["key"]
     head, _, tail = key.partition(":")
-    if head in ("stale", "missing", "read"):
+    if head in ("stale", "missing", "read", "stuck", "range"):
         return [_INSTRUMENT.get(tail, "cdp")]
     if head == "setup":
         names = []
@@ -71,10 +82,14 @@ def categories_of(alert: dict) -> List[str]:
         return names or ["cdp"]
     if head == "log_errors":
         return ["cdp", "lwc"]
-    if head in ("on_battery", "reboot", "disk"):
+    if head in ("on_battery", "reboot", "disk", "com_missing", "sleep_enabled", "reboot_pending"):
         return ["power"]
-    if head.startswith(("drive", "backup")):
+    if head.startswith(("drive", "backup", "heartbeat")):
         return ["upload"]
+    if head.startswith("lwc_"):
+        return ["lwc"]
+    if head == "d11_fine":
+        return ["d11"]
     if head in ("fog", "env_laser", "env_temp"):
         return ["optics"]
     if head.startswith("env_"):
@@ -125,6 +140,8 @@ def advice_for(alert: dict) -> List[str]:
 
 # 依 2023–2026 的資料定:過去 99% 的值再留一點餘裕
 ENV_LIMITS = {"pm25": 45.0, "pm25_typical": 31.0, "pressure_change": 4.0, "d11_rh": 60.0, "d11_temp": 42.0, "laser_temp": 36.0, "number": 1500.0}
+from .heartbeat import Heartbeat  # noqa: E402
+
 DRIVE_PROCESS = "GoogleDriveFS.exe"
 PADS_PROCESS = "PADS 4.exe"
 LOG_TAIL_BYTES = 65536
@@ -215,20 +232,49 @@ def explain_log(lines: List[str], now: float) -> dict:
     return out
 
 
+_BARS = "▁▂▃▄▅▆▇█"
+
+
+def daily_lines(summary: dict) -> List[str]:
+    """過去 24 小時的品質摘要。覆蓋率低於 90% 就標出來。"""
+    lines = ["**過去 24 小時:**"]
+    coverage = summary.get("coverage") or {}
+    if coverage:
+        lines.append("資料完整度 " + "、".join(f"{'⚠️' if value < 0.9 else ''}{label} {value:.0%}" for label, value in coverage.items()))
+    if "cloud_minutes" in summary:
+        text = f"雲中 {summary['cloud_minutes']} 分鐘"
+        if "number" in summary:
+            text += f",濃度中位數 {summary['number']:.0f} /cm³,MVD {summary['mvd']:.1f} µm"
+        lines.append(text)
+    hours = summary.get("cloud_by_hour")
+    if hours and max(hours) > 0:
+        top = max(hours)
+        lines.append("雲量逐時 `" + "".join(_BARS[min(len(_BARS) - 1, int(v / top * (len(_BARS) - 1)))] if v else " " for v in hours) + "`")
+    if "pm25" in summary:
+        lines.append(f"PM2.5 中位數 {summary['pm25']:.1f} µg/m³")
+    return lines
+
+
 class Watcher:
-    def __init__(self, feed, config: dict, power: Callable = read_power, boot: Callable = read_boot_time, processes: Callable = list_processes, clock: Callable = time.time, normal: Optional[dict] = None):
+    def __init__(self, feed, config: dict, power: Callable = read_power, boot: Callable = read_boot_time, processes: Callable = list_processes, clock: Callable = time.time, normal: Optional[dict] = None, system: Callable = dict):
         self.feed = feed
         self.config = config
         self.normal = normal
         self.console_shown: dict = {}
         self.recent_events: List[dict] = []
-        self.power, self.boot, self.processes, self.clock = power, boot, processes, clock
+        self.power, self.boot, self.processes, self.clock, self.system = power, boot, processes, clock, system
+        self.backup_at: Optional[float] = None
+        self.last_step: Optional[float] = None
+        self.heartbeat = Heartbeat(config.get("heartbeat_url") or None, float(config.get("heartbeat_seconds", 300)), allow_local=bool(config.get("_allow_local_webhook")))
         self.state_path = Path(config.get("state_file", "watch_state.json"))
         self.fog_seconds = float(config.get("fog_seconds", 300))
         self.state = self._load_state()
         self.backup_result: Optional[dict] = None
         self.last_alerts: List[dict] = []
         self.reconfigure()
+        restarts = int(os.environ.get("PANEL_RESTART_COUNT", "0") or 0)
+        if restarts:
+            self.notifier.add("🟡 **面板自動重開過**" + (f"({self.site})" if self.site else "") + f"\n看門狗重開了 {restarts} 次。請看 watchdog.log;資料由 PADS 和 11-D 記錄,面板重開不影響原始檔。")
         self.daily_hour = config.get("daily_report_hour", 8)
         if self.notifier.url and self.state.get("started_notice_boot") != self.boot():
             self.notifier.add("🟢 **監測已啟動**" + (f"({self.site})" if self.site else "") + f"\n{datetime.fromtimestamp(self.clock()).strftime('%m-%d %H:%M')} 開始監測。之後有問題會在這裡通知。")
@@ -240,6 +286,9 @@ class Watcher:
         self.status_dir = Path(config["status_dir"]) if config.get("status_dir") else None
         self.site = str(config.get("site_name", ""))
         self.notifier = Notifier(config.get("discord_webhook") or None, self.state.setdefault("discord_queue", []), allow_local=bool(config.get("_allow_local_webhook")))
+        url = config.get("heartbeat_url") or None
+        if url != self.heartbeat.url and (url or self.heartbeat.configured):
+            self.heartbeat.set_url(url)
 
     def _load_state(self) -> dict:
         try:
@@ -352,6 +401,8 @@ class Watcher:
 
         self._environment_alerts(add, now)
         self._clock_alerts(add)
+        self._data_alerts(add)
+        self._system_alerts(add, status, now)
         self._storage_alerts(add, running)
         self.state["last_seen"] = now
         return alerts
@@ -391,7 +442,66 @@ class Watcher:
             add("manual_mismatch", "info", "兩台流速設定不同", f"CDP {cdp_pas:g}、LWC-300 {hot_pas:g} m/s,都是手動輸入。若實際相同,CDP 濃度和 LWC 要乘 {cdp_pas / hot_pas:.2f}。", "確認實際風速。")
         pressure, manual = env.get("pressure"), env.get("hot_pressure")
         if pressure is not None and manual is not None and abs(pressure - manual) > 15:
-            add("manual_pressure", "warn", "LWC-300 手動壓力和實測不符", f"手動輸入 {manual:g} hPa,11-D 實測 {pressure:.0f} hPa,差 {manual - pressure:+.0f} hPa。", "修正手動壓力。")
+            add("manual_pressure", "warn", "LWC-300 手動壓力和實測不符", f"手動輸入 {manual:g} hPa,11-D 實測 {pressure:.0f} hPa,差 {manual - pressure:+.0f} hPa。主要影響 LWC-CalculatedDAP;LWC-AveragedDAP 幾乎不受影響。", "修正手動壓力。")
+
+    def _data_alerts(self, add: Callable) -> None:
+        """資料本身合不合理。門檻用 87 個野外日回放過:加熱線 2 天、DAP 1 天、基線 4 天會觸發。"""
+        checks = self.feed.data_checks()
+        for label in checks["stuck"]:
+            add(f"stuck:{label}", "error", f"{label} 數值卡住不變", f"最近 {self.feed.stuck_seconds / 60:.0f} 分鐘多個欄位完全相同,過去資料從沒發生過這麼久。軟體可能還在存檔,但內容不可信。", "看軟體畫面,必要時重新記錄。")
+        for label, text in checks["range"]:
+            add(f"range:{label}", "warn", f"{label} 數值超出合理範圍", text + "。", "確認感測器和連線。")
+        power, dap = checks.get("power"), checks.get("dap")
+        if power is not None and power < 1.5:
+            add("lwc_heater", "error", "LWC-300 加熱線沒有功率", f"總功率約 {power:.2f} W(正常約 2.4 W)。LWC-300 這時的數值沒有意義。", "檢查 LWC-300 電源和加熱線。")
+        elif dap is not None and dap < 1.0:
+            add("lwc_dap", "warn", "LWC-300 乾空氣功率設定異常", f"DAP-Averaged 約 {dap:.2f} W(正常約 2.4 W),LWC-300 會整段偏高。", "重新設定乾空氣功率。")
+        baseline = checks.get("baseline")
+        if baseline is not None and abs(baseline) > 0.5 and (power is None or power >= 1.5):
+            add("lwc_baseline", "warn", "LWC-300 基線偏移", f"無雲時中位數 {baseline:+.2f} g/m³,應接近 0。", "確認探頭,必要時重新歸零。")
+        ratio = checks.get("fine_ratio")
+        if ratio is not None and ratio >= 5 and checks.get("fine_pm", 99) < 3.43:
+            add("d11_fine", "info", "11-D 最小通道偏高", f"0.253 µm 是下一通道的 {ratio:.1f} 倍(平常約 1.9 倍),PM2.5 {checks['fine_pm']:.2f}。過去 19 天出現過,原因未確定。", "有機會時做零氣測試。")
+
+    def _system_alerts(self, add: Callable, status: dict, now: float) -> None:
+        system = self.system() or {}
+        ports = system.get("com_ports")
+        if ports is not None:
+            if all(item["code"] == "ok" for item in status["instruments"]):
+                self.state["com_ports"] = ports
+            else:
+                missing = sorted(set(self.state.get("com_ports") or []) - set(ports))
+                if missing:
+                    add("com_missing", "error", "COM 埠消失了", f"{'、'.join(missing)} 上次正常時還在,現在不見了。多半是線路鬆脫或儀器沒電,不是軟體問題。", "檢查線路和儀器電源。")
+        sleeping = [text for value, text in ((system.get("sleep_ac_seconds"), "接電時會睡眠"), (system.get("hibernate_ac_seconds"), "接電時會休眠"), (system.get("lid_ac_action"), "闔上螢幕會有動作")) if value]
+        if sleeping:
+            add("sleep_enabled", "warn", "筆電可能會自己睡著", "、".join(sleeping) + "。睡著時所有監測和上傳都會停。", "改電源設定。")
+        if system.get("reboot_pending"):
+            add("reboot_pending", "warn", "Windows 更新等著重開機", "可能在觀測中自動重開,重開後 PADS 和 11-D 要重新開始記錄。", "排定重開時間。")
+        if self.heartbeat.failing:
+            add("heartbeat_failed", "warn", "外部心跳送不出去", f"連續失敗 {self.heartbeat.fails} 次({self.heartbeat.last_error})。外部服務會以為筆電停了,通常是網路問題。", "檢查網路。")
+        minutes = float(self.config.get("backup_minutes", 30))
+        if self.config.get("backup_jobs") and self.backup_at is not None and now - self.backup_at > 3 * minutes * 60 + 600:
+            add("backup_stale", "warn", "備份很久沒完成", f"上次完成是 {(now - self.backup_at) / 60:.0f} 分鐘前,應該每 {minutes:g} 分鐘一次。", "檢查備份和雲端硬碟。")
+
+    def maintenance(self) -> Optional[dict]:
+        item = self.state.get("maintenance")
+        return item if item and item["until"] > self.clock() else None
+
+    def set_maintenance(self, minutes: float, reason: str = "") -> dict:
+        """維護中不發通知,問題仍照常判斷和記錄。時間到自動結束,避免忘記關。"""
+        until = self.clock() + minutes * 60
+        self.state["maintenance"] = {"until": until, "reason": reason[:200]}
+        self.notifier.add("🛠️ **開始維護**" + (f"({self.site})" if self.site else "") + f"\n到 {datetime.fromtimestamp(until).strftime('%m-%d %H:%M')} 前不發問題通知。" + (f"\n原因:{reason[:200]}" if reason else ""))
+        self.notifier.flush()
+        self._save_state()
+        return self.state["maintenance"]
+
+    def end_maintenance(self) -> None:
+        if self.state.pop("maintenance", None):
+            self.notifier.add("🛠️ **維護結束**" + (f"({self.site})" if self.site else "") + "\n恢復發送通知。")
+            self.notifier.flush()
+            self._save_state()
 
     def _clock_alerts(self, add: Callable) -> None:
         """PADS 和 11-D 是兩套軟體,時間要靠同一台筆電的時鐘才對得起來。"""
@@ -429,8 +539,18 @@ class Watcher:
 
     # ---- 輸出 --------------------------------------------------------
     def step(self) -> List[dict]:
+        self.heartbeat.step()
         alerts = self.evaluate()
         now = self.clock()
+        self.last_step = time.time()
+        expired = self.state.get("maintenance")
+        if expired and expired["until"] <= now:
+            self.state.pop("maintenance")
+            self.notifier.add("🛠️ **維護時間到了**" + (f"({self.site})" if self.site else "") + "\n恢復發送通知。")
+        muted = self.maintenance() is not None
+        flap = float(self.config.get("flap_seconds", 600))
+        notified = self.state.setdefault("notified", [])
+        last_sent = self.state.setdefault("last_sent", {})
         stamp = datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S")
         active = self.state.setdefault("active", {})
         events = []
@@ -439,14 +559,23 @@ class Watcher:
             if key not in active:
                 active[key] = stamp
                 events.append([stamp, "發生", alert["level"], alert["title"], alert["detail"]])
-                self.notifier.add(format_alert(alert, self.site))
         titles = self.state.setdefault("titles", {})
         titles.update({key: alert["title"] for key, alert in current.items()})
         for key in [k for k in active if k not in current]:
             since = active.pop(key)
             title = titles.pop(key, key)
             events.append([stamp, "解除", "info", title, f"從 {since} 開始"])
-            self.notifier.add(format_resolved(title, since, self.site))
+            if key in notified:
+                notified.remove(key)
+                if not muted:
+                    self.notifier.add(format_resolved(title, since, self.site))
+        # 反覆跳動的問題不重複通知;持續超過冷卻時間才再發。維護中先不發,結束時補上還沒解決的
+        if not muted:
+            for key, alert in current.items():
+                if key not in notified and now - last_sent.get(key, 0) >= flap:
+                    self.notifier.add(format_alert(alert, self.site))
+                    notified.append(key)
+                    last_sent[key] = now
         self._daily_report(alerts, now)
         self.notifier.flush()
         self._save_state()
@@ -455,6 +584,7 @@ class Watcher:
             self.recent_events.insert(0, {"time": row[0], "kind": row[1], "level": row[2], "title": row[3]})
         del self.recent_events[40:]
         self.feed.board = board_for(alerts, active, self.recent_events)
+        self.feed.board["maintenance"] = self.maintenance()
         self.feed.external_notices = [f"{a['title']}:{a['detail']}" for a in alerts if not a["key"].startswith(("stale", "missing"))]
         if self.status_dir is not None:
             self._write_status(alerts, active, stamp, events)
@@ -474,6 +604,7 @@ class Watcher:
         for item in status["instruments"]:
             age = "" if item["age"] is None else f",最後資料 {_age(item['age'])}前"
             lines.append(f"- {item['label']}:{item['text']}{age}")
+        lines += daily_lines(self.feed.daily_summary())
         lines.append(f"目前有 {len(alerts)} 個問題。" if alerts else "目前沒有發現問題。")
         if self.backup_result:
             lines.append(f"備份:{self.backup_result.get('time')},失敗 {self.backup_result.get('failed')} 個。")
