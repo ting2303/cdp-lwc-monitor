@@ -1,5 +1,22 @@
 # CDP / LWC / 11-D 資料工具
 
+## 下載
+
+| 檔案 | 說明 |
+|---|---|
+| [**CDP_LWC_11D_Panel.exe**](https://github.com/ting2303/cdp-lwc-monitor/releases/download/v0.1.3/CDP_LWC_11D_Panel.exe) | 單一檔案,下載後雙擊就能用,不必安裝 Python |
+| [CDP_LWC_11D_Panel.zip](https://github.com/ting2303/cdp-lwc-monitor/releases/download/v0.1.3/CDP_LWC_11D_Panel.zip) | 完整版,另附使用說明、開機自動啟動、模擬展示和雲端檢查 |
+
+目前版本 v0.1.3。所有版本見 [Releases](https://github.com/ting2303/cdp-lwc-monitor/releases)。
+
+1. 把 EXE 放到固定的資料夾,例如 `C:\CDP_LWC_Panel`。設定檔會建立在 EXE 旁邊。
+2. 雙擊開啟,瀏覽器會打開面板。在「設定資料夾」選 PADS 和 11-D 的資料夾。
+3. Windows 若顯示「Windows 已保護您的電腦」,按「其他資訊 → 仍要執行」。這個 EXE 沒有數位簽章。
+
+面板只顯示這台電腦上的儀器資料。要遠端看現場筆電,請用 AnyDesk。
+
+## 從原始碼使用
+
 所有工具都**只讀取原始資料**,除了備份工具會寫入您指定的目的地。
 
 | 想做的事 | 指令 |
