@@ -4,10 +4,10 @@
 
 | 檔案 | 說明 |
 |---|---|
-| [**CDP_LWC_11D_Panel.exe**](https://github.com/ting2303/cdp-lwc-monitor/releases/download/v0.1.3/CDP_LWC_11D_Panel.exe) | 單一檔案,下載後雙擊就能用,不必安裝 Python |
-| [CDP_LWC_11D_Panel.zip](https://github.com/ting2303/cdp-lwc-monitor/releases/download/v0.1.3/CDP_LWC_11D_Panel.zip) | 完整版,另附使用說明、開機自動啟動、模擬展示和雲端檢查 |
+| [**CDP_LWC_11D_Panel.exe**](https://github.com/ting2303/cdp-lwc-monitor/releases/download/v0.1.4/CDP_LWC_11D_Panel.exe) | 單一檔案,下載後雙擊就能用,不必安裝 Python |
+| [CDP_LWC_11D_Panel.zip](https://github.com/ting2303/cdp-lwc-monitor/releases/download/v0.1.4/CDP_LWC_11D_Panel.zip) | 完整版,另附使用說明、開機自動啟動、模擬展示和雲端檢查 |
 
-目前版本 v0.1.3。所有版本見 [Releases](https://github.com/ting2303/cdp-lwc-monitor/releases)。
+目前版本 v0.1.4。所有版本見 [Releases](https://github.com/ting2303/cdp-lwc-monitor/releases)。
 
 1. 把 EXE 放到固定的資料夾,例如 `C:\CDP_LWC_Panel`。設定檔會建立在 EXE 旁邊。
 2. 雙擊開啟,瀏覽器會打開面板。在「設定資料夾」選 PADS 和 11-D 的資料夾。
@@ -51,6 +51,7 @@ venv/Scripts/python tools/build_exe.py build_tmp dist
 | 看門狗 | `CDP_LWC_11D_Panel.exe --watchdog`,面板當掉或沒回應就重開 |
 | 遠端診斷 | 每小時寫到雲端狀態資料夾,含 COM 埠和螢幕截圖 |
 | 維護模式 | 面板左下方,暫停通知,時間到自動結束 |
+| 備份到 NAS | 在面板「設定資料夾」填 NAS 資料夾,每 30 分鐘備份 PADS 和 11-D,記錄中的檔案也會先傳 |
 | 確認上傳 | 另一台電腦跑 `--cloud-check 雲端資料夾` |
 
 ## 資料校正

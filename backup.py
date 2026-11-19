@@ -6,6 +6,8 @@ python backup.py --config backup_config.json             # 實際備份
 原則:
 - 只新增或更新,絕不刪除目的地的檔案。
 - 最近仍在變動的檔案先跳過,因為 PADS 可能還在寫入。
+  工作設定 include_active 時,記錄中的檔案也會複製「目前為止」的內容,下一輪再更新;
+  太大的(active_max_mb)仍等寫完再傳,避免每 30 分鐘重傳一個大檔。
 - 先寫成 .part 並核對 SHA-256,確認相同才改名。
 - 目的地比來源新且內容不同時不覆蓋,回報為衝突。
 只需要 Python 標準函式庫。
@@ -73,11 +75,37 @@ def copy_verified(source: Path, target: Path) -> None:
             part.unlink()
 
 
+def copy_snapshot(source: Path, target: Path, size: int, mtime: float) -> None:
+    """複製還在寫入的檔案:只取前 size 個位元組,邊讀邊算雜湊,寫完再核對。來源之後再變大也不影響這份。"""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = target.with_name(target.name + ".part")
+    try:
+        digest = hashlib.sha256()
+        remaining = size
+        with open(source, "rb") as reader, open(part, "wb") as writer:
+            while remaining > 0:
+                chunk = reader.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    raise OSError("檔案在複製時變短了")
+                digest.update(chunk)
+                writer.write(chunk)
+                remaining -= len(chunk)
+        if sha256(part) != digest.hexdigest():
+            raise OSError("複製後 SHA-256 不符")
+        os.utime(part, (mtime, mtime))
+        os.replace(part, target)
+    finally:
+        if part.exists():
+            part.unlink()
+
+
 def run_job(job: dict, stable_minutes: float, dry_run: bool, now: Optional[float] = None) -> Result:
     source = Path(job["source"])
     dest = Path(job["dest"])
     exclude = list(job.get("exclude", [])) + ["*.part", "Thumbs.db", "desktop.ini"]
     now = time.time() if now is None else now
+    include_active = bool(job.get("include_active"))
+    active_max = float(job.get("active_max_mb", 50)) * 1e6
     result = Result()
 
     def note(action: str, path: Path, detail: str = "") -> None:
@@ -88,7 +116,8 @@ def run_job(job: dict, stable_minutes: float, dry_run: bool, now: Optional[float
         target = dest / rel
         try:
             stat = path.stat()
-            if now - stat.st_mtime < stable_minutes * 60:
+            active = now - stat.st_mtime < stable_minutes * 60
+            if active and (not include_active or stat.st_size > active_max):
                 result.in_use += 1
                 note("使用中,先跳過", rel)
                 continue
@@ -103,7 +132,8 @@ def run_job(job: dict, stable_minutes: float, dry_run: bool, now: Optional[float
                 if same_size and sha256(path) == sha256(target):
                     result.unchanged += 1
                     continue
-                if old.st_mtime > stat.st_mtime + MTIME_TOLERANCE_S:
+                # 記錄中的檔案只會變大;目的地比較大代表不是同一份,不覆蓋
+                if old.st_mtime > stat.st_mtime + MTIME_TOLERANCE_S or (active and old.st_size > stat.st_size):
                     result.conflicts += 1
                     note("衝突:目的地較新,未覆蓋", rel)
                     continue
@@ -114,8 +144,13 @@ def run_job(job: dict, stable_minutes: float, dry_run: bool, now: Optional[float
                     existing = existing.parent
                 if shutil.disk_usage(existing).free < stat.st_size * 1.1:
                     raise OSError("目的地空間不足")
-                copy_verified(path, target)
-            if action == "新增":
+                if active:
+                    copy_snapshot(path, target, stat.st_size, stat.st_mtime)
+                else:
+                    copy_verified(path, target)
+            if active:
+                action += "(記錄中)"
+            if action.startswith("新增"):
                 result.copied += 1
             else:
                 result.updated += 1

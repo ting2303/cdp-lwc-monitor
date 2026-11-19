@@ -223,6 +223,7 @@ class Locator:
             "d11_roots": self.config.get("d11_roots", []),
             "config_path": str(self.config_path),
             "cloud_folder": self.config.get("cloud_folder") or find_cloud_folder() or "",
+            "nas_folder": self.config.get("nas_folder", ""),
             "site_name": self.config.get("site_name", ""),
             "has_webhook": bool(self.config.get("discord_webhook")),
             "has_heartbeat": bool(self.config.get("heartbeat_url")),
@@ -243,13 +244,17 @@ class Locator:
         if self.search:
             self.search.cancelled.set()
 
-    def apply_remote(self, cloud: object, site: object, webhook: object, heartbeat: object = None) -> List[str]:
+    def apply_remote(self, cloud: object, site: object, webhook: object, heartbeat: object = None, nas: object = None) -> List[str]:
         """雲端上傳和 Discord。webhook 是 None 表示維持原本的設定,不會回傳到網頁。"""
         errors: List[str] = []
         if not isinstance(cloud, str) or not isinstance(site, str):
             return ["設定格式不正確"]
         if cloud and not Path(cloud).is_dir():
             errors.append(f"找不到雲端資料夾:{cloud}")
+        if nas is not None and not isinstance(nas, str):
+            return ["設定格式不正確"]
+        if nas and not Path(nas.strip()).is_dir():
+            errors.append(f"找不到 NAS 資料夾:{nas},請確認已經連上 NAS 或同步程式已登入")
         if webhook not in (None, "") and not self.config.get("_allow_local_webhook") and not (isinstance(webhook, str) and valid_webhook(webhook.strip())):
             errors.append("Discord Webhook 網址格式不對,應該以 https://discord.com/api/webhooks/ 開頭")
         allow_local = bool(self.config.get("_allow_local_webhook"))
@@ -259,6 +264,8 @@ class Locator:
             return errors
         if heartbeat is not None:
             self.config["heartbeat_url"] = heartbeat.strip()
+        if nas is not None:
+            self.config["nas_folder"] = nas.strip().replace("\\", "/")
         clean = re.sub(r'[\\/:*?"<>|]', "_", site.strip()) or "現場"
         self.config["site_name"] = site.strip()
         self.config["cloud_folder"] = cloud.replace("\\", "/")
@@ -271,19 +278,18 @@ class Locator:
         return []
 
     def _apply_cloud_paths(self, folder: Optional[str] = None) -> None:
-        cloud = self.config.get("cloud_folder")
-        if not cloud:
-            self.config["status_dir"] = ""
-            self.config["backup_jobs"] = []
-            return
+        """每個目的地(雲端、NAS)各備份一份 PADS 和 11-D。狀態檔放雲端;只有 NAS 時放 NAS。"""
         clean = folder or re.sub(r'[\\/:*?"<>|]', "_", str(self.config.get("site_name", "")).strip()) or "現場"
-        base = f"{cloud}/CDPLWC_現場/{clean}"
-        self.config["status_dir"] = f"{base}/狀態"
+        targets = [(label, value) for label, value in (("雲端", self.config.get("cloud_folder")), ("NAS", self.config.get("nas_folder"))) if value]
+        self.config["status_dir"] = f"{targets[0][1]}/CDPLWC_現場/{clean}/狀態" if targets else ""
         jobs = []
-        for label, roots, sub in (("PADS", self.config.get("pads_roots", []), "PADS"), ("11-D", self.config.get("d11_roots", []), "11D")):
-            for number, root in enumerate(roots):
-                suffix = f"_{number + 1}" if len(roots) > 1 else ""
-                jobs.append({"name": label + suffix, "source": root, "dest": f"{base}/{sub}{suffix}"})
+        for target, top in targets:
+            base = f"{top}/CDPLWC_現場/{clean}"
+            for label, roots, sub in (("PADS", self.config.get("pads_roots", []), "PADS"), ("11-D", self.config.get("d11_roots", []), "11D")):
+                for number, root in enumerate(roots):
+                    suffix = f"_{number + 1}" if len(roots) > 1 else ""
+                    name = label + suffix + ("" if target == "雲端" else f"→{target}")
+                    jobs.append({"name": name, "source": root, "dest": f"{base}/{sub}{suffix}", "root": top, "include_active": True, "active_max_mb": float(self.config.get("active_max_mb", 50))})
         self.config["backup_jobs"] = jobs
 
     def test_message(self) -> Optional[str]:

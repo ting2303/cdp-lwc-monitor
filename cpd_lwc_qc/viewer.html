@@ -303,10 +303,11 @@ button.on{background:var(--text);color:var(--card);border-color:var(--text)}
   <p class="sub" id="d11Hint">11-D 是依檔名(-C、-M、-L)或資料夾名稱(11D、11-D、D11)判斷。找不到時請直接輸入資料夾路徑。</p>
   <h3>上傳和通知</h3>
   <div class="row"><label style="flex:1;min-width:0">雲端資料夾<input id="cloudFolder" style="flex:1;min-width:0" placeholder="例如 G:\我的雲端硬碟"></label></div>
+  <div class="row"><label style="flex:1;min-width:0">NAS 資料夾<input id="nasFolder" style="flex:1;min-width:0" placeholder="例如 Z:\觀測資料 或 \\NAS名稱\共用資料夾(可留空)"></label></div>
   <div class="row"><label style="flex:1;min-width:0">測站名稱<input id="siteName" style="flex:1;min-width:0" placeholder="例如 鹿林;會出現在通知和雲端資料夾名稱"></label></div>
   <div class="row"><label style="flex:1;min-width:0">Discord Webhook<input id="discordHook" type="password" autocomplete="off" style="flex:1;min-width:0" placeholder="貼上 Webhook 網址"></label><button id="testDiscord" style="white-space:nowrap">傳測試訊息</button></div>
   <div class="row"><label style="flex:1;min-width:0">外部心跳網址<input id="heartbeatUrl" type="password" autocomplete="off" style="flex:1;min-width:0" placeholder="例如 Healthchecks.io 的 Ping 網址"></label><button id="testHeartbeat" style="white-space:nowrap">送一次心跳</button></div>
-  <p class="sub" id="remoteHint">資料會複製到「雲端資料夾/CDPLWC_現場/測站名稱」,由 Google 雲端硬碟電腦版上傳。Webhook 和心跳網址等同密碼,只存在這台電腦。心跳讓外部服務在筆電整台停掉時通知你。</p>
+  <p class="sub" id="remoteHint">資料每 30 分鐘複製到「雲端資料夾」和「NAS 資料夾」底下的 CDPLWC_現場/測站名稱,記錄中的檔案也會先傳目前的內容。Webhook 和心跳網址等同密碼,只存在這台電腦。心跳讓外部服務在筆電整台停掉時通知你。</p>
   <p class="err" id="setupError" hidden></p>
   <div class="actions"><button id="closeSetup">取消</button><button id="applySetup" class="primary">套用</button></div>
   <p class="sub" id="configPath"></p>
@@ -1378,6 +1379,7 @@ async function openSetup() {
     for (const path of list) folders[kind].set(path.toLowerCase(), {path, checked: true, current: true});
   $("configPath").textContent = "設定會存到:" + current.config_path;
   $("cloudFolder").value = current.cloud_folder || "";
+  $("nasFolder").value = current.nas_folder || "";
   $("siteName").value = current.site_name || "";
   $("discordHook").value = "";
   $("discordHook").placeholder = current.has_webhook ? "已設定(留空表示不變)" : "貼上 Webhook 網址";
@@ -1401,7 +1403,7 @@ function addManual(kind) {
 async function saveRemote() {
   const hook = $("discordHook").value.trim();
   const beat = $("heartbeatUrl").value.trim();
-  const response = await post("/api/locate/remote", {cloud_folder: $("cloudFolder").value.trim().replace(/^"|"$/g, ""), site_name: $("siteName").value, discord_webhook: hook || null, heartbeat_url: beat || null});
+  const response = await post("/api/locate/remote", {cloud_folder: $("cloudFolder").value.trim().replace(/^"|"$/g, ""), site_name: $("siteName").value, discord_webhook: hook || null, heartbeat_url: beat || null, nas_folder: $("nasFolder").value.trim().replace(/^"|"$/g, "")});
   const result = await response.json();
   if (!result.ok) { $("setupError").textContent = "▲ " + result.errors.join(";"); $("setupError").hidden = false; return false; }
   $("setupError").hidden = true;

@@ -58,6 +58,8 @@ DEFAULT_CONFIG = {
     "diag_minutes": 60,
     "diag_screenshot": True,
     "auto_restart_drive": True,
+    "nas_folder": "",
+    "active_max_mb": 50,
     "flap_seconds": 600,
 }
 
@@ -126,6 +128,11 @@ def run_backups(config: dict, base: Path) -> dict:
     total = backup.Result()
     for job in config.get("backup_jobs", []):
         if not Path(job["source"]).is_dir():
+            continue
+        if job.get("root") and not Path(job["root"]).is_dir():
+            # NAS 沒連上或雲端程式沒開:記成失敗,下一輪自動重試
+            total.failed += 1
+            total.rows.append([time.strftime("%Y-%m-%d %H:%M:%S"), job["name"], "失敗", job["root"], "找不到目的地資料夾,可能沒連上 NAS 或同步程式沒開"])
             continue
         result = backup.run_job(job, float(config.get("stable_minutes", 15)), False)
         for name in ("copied", "updated", "unchanged", "in_use", "conflicts", "failed"):

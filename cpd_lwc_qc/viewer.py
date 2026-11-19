@@ -375,7 +375,7 @@ def make_handler(store: Store, feed=None, locator=None, demo=None, ops=None):
                     if length > 65536:
                         raise ValueError("內容太大")
                     body = json.loads(self.rfile.read(length).decode("utf-8"))
-                    errors = locator.apply_remote(body.get("cloud_folder"), body.get("site_name"), body.get("discord_webhook"), body.get("heartbeat_url"))
+                    errors = locator.apply_remote(body.get("cloud_folder"), body.get("site_name"), body.get("discord_webhook"), body.get("heartbeat_url"), body.get("nas_folder"))
                 except (ValueError, AttributeError) as error:
                     errors = [str(error)]
                 except OSError as error:
